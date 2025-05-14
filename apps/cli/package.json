@@ -1,0 +1,25 @@
+{
+  "name": "@code-analyzer-pro/cli",
+  "version": "1.0.0",
+  "description": "CLI tool for Code Analyzer Pro",
+  "main": "dist/index.js",
+  "bin": {
+    "cap": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@code-analyzer-pro/core": "workspace:*",
+    "commander": "^11.1.0",
+    "axios": "^1.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1"
+  }
+} 
