@@ -1,7 +1,3 @@
-// src/analyzer.ts
-import * as fs from "fs/promises";
-import * as path from "path";
-
 // src/traverser.ts
 import { parse } from "@babel/parser";
 var _ContextualNamingSystem = class _ContextualNamingSystem {
@@ -203,7 +199,7 @@ function traverse(node, options, parent) {
       namingSystem.popContext();
     }
   }
-  if (options.onControlFlow && (node.type === "IfStatement" || node.type === "SwitchCase" || node.type === "ForStatement" || node.type === "WhileStatement" || node.type === "DoWhileStatement" || node.type === "CatchClause" || node.type === "ConditionalExpression")) {
+  if (options.onControlFlow && (node.type === "IfStatement" || node.type === "SwitchCase" || node.type === "ForStatement" || node.type === "WhileStatement" || node.type === "DoWhileStatement" || node.type === "CatchClause" || node.type === "ConditionalExpression" || node.type === "ForInStatement" || node.type === "ForOfStatement" || node.type === "LogicalExpression")) {
     options.onControlFlow(node);
   }
   Object.keys(node).forEach((key) => {
@@ -220,99 +216,6 @@ function traverse(node, options, parent) {
       }
     }
   });
-}
-function getChildren(node) {
-  const children = [];
-  const childProperties = {
-    Program: ["body"],
-    BlockStatement: ["body"],
-    FunctionDeclaration: ["body", "params"],
-    ArrowFunctionExpression: ["body", "params"],
-    FunctionExpression: ["body", "params"],
-    IfStatement: ["consequent", "alternate"],
-    SwitchCase: ["consequent"],
-    ForStatement: ["init", "test", "update", "body"],
-    WhileStatement: ["test", "body"],
-    DoWhileStatement: ["body", "test"],
-    TryStatement: ["block", "handler", "finalizer"],
-    CatchClause: ["body"],
-    ConditionalExpression: ["test", "consequent", "alternate"],
-    CallExpression: ["arguments", "callee"],
-    MemberExpression: ["object", "property"],
-    ObjectExpression: ["properties"],
-    ArrayExpression: ["elements"],
-    JSXElement: ["openingElement", "closingElement", "children"],
-    JSXExpressionContainer: ["expression"],
-    VariableDeclaration: ["declarations"],
-    VariableDeclarator: ["init"],
-    ObjectProperty: ["value"],
-    ClassMethod: ["body", "params"],
-    ClassProperty: ["value"],
-    ExportDefaultDeclaration: ["declaration"],
-    ExportNamedDeclaration: ["declaration"],
-    ClassDeclaration: ["body", "superClass"],
-    ClassBody: ["body"],
-    MethodDefinition: ["value", "key"],
-    Property: ["value", "key"],
-    AssignmentExpression: ["left", "right"],
-    BinaryExpression: ["left", "right"],
-    LogicalExpression: ["left", "right"],
-    UnaryExpression: ["argument"],
-    UpdateExpression: ["argument"],
-    NewExpression: ["arguments", "callee"],
-    TaggedTemplateExpression: ["tag", "quasi"],
-    TemplateLiteral: ["quasis", "expressions"],
-    SequenceExpression: ["expressions"],
-    SpreadElement: ["argument"],
-    RestElement: ["argument"],
-    ArrayPattern: ["elements"],
-    ObjectPattern: ["properties"],
-    AssignmentPattern: ["left", "right"],
-    YieldExpression: ["argument"],
-    AwaitExpression: ["argument"],
-    ImportDeclaration: ["specifiers", "source"],
-    ImportSpecifier: ["imported", "local"],
-    ImportDefaultSpecifier: ["local"],
-    ImportNamespaceSpecifier: ["local"],
-    ExportSpecifier: ["exported", "local"]
-  };
-  const properties = childProperties[node.type];
-  if (properties) {
-    for (const prop of properties) {
-      const value = node[prop];
-      if (Array.isArray(value)) {
-        children.push(...value.filter(Boolean));
-      } else if (value) {
-        children.push(value);
-      }
-    }
-  }
-  if (node.type === "FunctionDeclaration" || node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression") {
-    console.log(`Found ${children.length} children for ${node.type}:`, {
-      type: node.type,
-      id: node.id?.name,
-      loc: node.loc,
-      children: children.map((child) => ({
-        type: child.type,
-        loc: child.loc
-      }))
-    });
-  }
-  return children;
-}
-function calculateComplexity(node) {
-  let complexity = 1;
-  if (!node || node.type === "StringLiteral" || node.type === "NumericLiteral" || node.type === "BooleanLiteral" || node.type === "NullLiteral" || node.type === "RegExpLiteral") {
-    return complexity;
-  }
-  if (node.type === "IfStatement" || node.type === "SwitchCase" || node.type === "ForStatement" || node.type === "WhileStatement" || node.type === "DoWhileStatement" || node.type === "CatchClause" || node.type === "ConditionalExpression") {
-    complexity++;
-  }
-  const children = getChildren(node);
-  for (const child of children) {
-    complexity += calculateComplexity(child);
-  }
-  return complexity;
 }
 function parseFile(content) {
   return parse(content, {
@@ -353,6 +256,8 @@ function parseFile(content) {
 }
 
 // src/analyzer.ts
+import * as fs from "fs/promises";
+import * as path from "path";
 var CodeAnalyzer = class {
   constructor() {
     this.COMPLEXITY_THRESHOLD = 10;
@@ -392,7 +297,25 @@ var CodeAnalyzer = class {
     const functionNode = node;
     const functionName = functionNode.id?.name || "anonymous";
     const functionSize = this.calculateFunctionSize(functionNode);
-    const complexity = this.calculateComplexity(functionNode);
+    let complexity = 1;
+    traverse(functionNode, {
+      onControlFlow: (node2) => {
+        if ([
+          "IfStatement",
+          "SwitchCase",
+          "ForStatement",
+          "WhileStatement",
+          "DoWhileStatement",
+          "CatchClause",
+          "ConditionalExpression",
+          "ForInStatement",
+          "ForOfStatement",
+          "LogicalExpression"
+        ].includes(node2.type)) {
+          complexity++;
+        }
+      }
+    });
     const characteristics = this.analyzeFunctionCharacteristics(functionNode);
     return {
       name: functionName,
@@ -481,7 +404,10 @@ var CodeAnalyzer = class {
           "WhileStatement",
           "DoWhileStatement",
           "CatchClause",
-          "ConditionalExpression"
+          "ConditionalExpression",
+          "ForInStatement",
+          "ForOfStatement",
+          "LogicalExpression"
         ].includes(node2.type)) {
           complexity++;
         }
@@ -629,7 +555,6 @@ var CodeAnalyzer = class {
 };
 export {
   CodeAnalyzer,
-  calculateComplexity,
   parseFile,
   traverse
 };

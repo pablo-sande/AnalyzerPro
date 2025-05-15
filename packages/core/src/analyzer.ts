@@ -79,7 +79,18 @@ export class CodeAnalyzer {
     const functionNode = node as FunctionDeclaration | ArrowFunctionExpression | FunctionExpression;
     const functionName = (functionNode as any).id?.name || 'anonymous';
     const functionSize = this.calculateFunctionSize(functionNode);
-    const complexity = this.calculateComplexity(functionNode);
+    
+    // Calculate complexity by traversing the function body
+    let complexity = 1; // Base complexity
+    traverse(functionNode, {
+      onControlFlow: (node: BabelNode) => {
+        if (['IfStatement', 'SwitchCase', 'ForStatement', 'WhileStatement', 
+             'DoWhileStatement', 'CatchClause', 'ConditionalExpression',
+             'ForInStatement', 'ForOfStatement', 'LogicalExpression'].includes(node.type)) {
+          complexity++;
+        }
+      }
+    });
 
     // Analyze function characteristics
     const characteristics = this.analyzeFunctionCharacteristics(functionNode);
@@ -183,7 +194,8 @@ export class CodeAnalyzer {
     traverse(node, {
       onControlFlow: (node: BabelNode) => {
         if (['IfStatement', 'SwitchCase', 'ForStatement', 'WhileStatement', 
-             'DoWhileStatement', 'CatchClause', 'ConditionalExpression'].includes(node.type)) {
+             'DoWhileStatement', 'CatchClause', 'ConditionalExpression',
+             'ForInStatement', 'ForOfStatement', 'LogicalExpression'].includes(node.type)) {
           complexity++;
         }
       }

@@ -1,20 +1,83 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FileAnalysis as FileAnalysisType } from '@code-analyzer-pro/core';
+import { useState, useEffect } from 'react';
+import { InfoButton } from '@/components/InfoButton';
 
 export interface FileAnalysisProps {
   file: FileAnalysisType;
+  mainSortField?: string;
+  mainSortOrder?: string;
 }
+
+type SortField = 'name' | 'startLine' | 'complexity' | 'lines';
+type SortDirection = 'asc' | 'desc';
 
 export function FileAnalysis({ file }: FileAnalysisProps) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sort, setSort] = useState<{ field: SortField; order: SortDirection }>(() => {
+    const field = searchParams.get('sortField') as SortField || 'startLine';
+    const order = searchParams.get('sortOrder') as SortDirection || 'asc';
+    return { field, order };
+  });
+
+  useEffect(() => {
+    setSearchParams(prev => {
+      prev.set('sortField', sort.field);
+      prev.set('sortOrder', sort.order);
+      return prev;
+    }, { replace: true });
+  }, [sort, setSearchParams]);
+
   if (!file) return null;
+
+  const handleSort = (field: SortField) => {
+    const newOrder = (sort.field === field && sort.order === 'asc' ? 'desc' : 'asc') as SortDirection;
+    setSort({ field, order: newOrder });
+  };
+
+  const handleBack = () => {
+    const mainSortField = searchParams.get('mainSortField') || 'name';
+    const mainSortOrder = searchParams.get('mainSortOrder') || 'asc';
+    navigate(`/?sortField=${mainSortField}&sortOrder=${mainSortOrder}`);
+  };
+
+  const sortedFunctions = [...file.functions].sort((a, b) => {
+    const multiplier = sort.order === 'asc' ? 1 : -1;
+    switch (sort.field) {
+      case 'name':
+        return multiplier * a.name.localeCompare(b.name);
+      case 'startLine':
+        return multiplier * (a.startLine - b.startLine);
+      case 'complexity':
+        return multiplier * (a.complexity - b.complexity);
+      case 'lines':
+        return multiplier * (a.lines - b.lines);
+      default:
+        return 0;
+    }
+  });
+
+  const SortButton = ({ field, label }: { field: SortField; label: string }) => (
+    <button
+      onClick={() => handleSort(field)}
+      className="flex items-center gap-1 hover:text-blue-500"
+    >
+      {label}
+      {sort.field === field && (
+        <span className="text-sm">
+          {sort.order === 'asc' ? '↑' : '↓'}
+        </span>
+      )}
+    </button>
+  );
 
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate(-1)}
+            onClick={handleBack}
             className="flex items-center gap-2 px-4 py-2 text-gray-600 bg-white border rounded-lg hover:bg-gray-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
@@ -62,14 +125,34 @@ export function FileAnalysis({ file }: FileAnalysisProps) {
               <table className="min-w-full">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left">Name</th>
-                    <th className="px-4 py-2 text-right">Line</th>
-                    <th className="px-4 py-2 text-right">Complexity</th>
-                    <th className="px-4 py-2 text-right">Lines</th>
+                    <th className="px-4 py-2 text-left">
+                      <div className="flex items-center">
+                        <SortButton field="name" label="Name" />
+                        <InfoButton info="Function name and type" position="left" />
+                      </div>
+                    </th>
+                    <th className="px-4 py-2 text-right">
+                      <div className="flex items-center justify-end">
+                        <SortButton field="startLine" label="Line" />
+                        <InfoButton info="Starting line number of the function" position="center" />
+                      </div>
+                    </th>
+                    <th className="px-4 py-2 text-right">
+                      <div className="flex items-center justify-end">
+                        <SortButton field="complexity" label="Complexity" />
+                        <InfoButton info="Cyclomatic complexity (red if > 10)" position="center" />
+                      </div>
+                    </th>
+                    <th className="px-4 py-2 text-right">
+                      <div className="flex items-center justify-end">
+                        <SortButton field="lines" label="Lines" />
+                        <InfoButton info="Number of lines (red if > 50)" position="right" />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {file.functions.map((func, idx) => (
+                  {sortedFunctions.map((func, idx) => (
                     <tr key={func.name + '-' + idx} className="border-t">
                       <td className="px-4 py-2 font-mono text-sm">
                         {func.name}

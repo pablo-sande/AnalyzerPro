@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { FileSearch } from '@/components/FileSearch';
 import { AnalysisResult } from '@code-analyzer-pro/core';
 import { InfoButton } from '@/components/InfoButton';
@@ -11,10 +11,22 @@ import { analyzeRepo } from './api';
 function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; setAnalysis: (analysis: AnalysisResult | null) => void }) {
   const [url, setUrl] = useState<string>(() => localStorage.getItem('lastUrl') || '');
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState({ field: 'name', order: 'asc' as 'asc' | 'desc' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sort, setSort] = useState({ 
+    field: searchParams.get('sortField') || 'name', 
+    order: (searchParams.get('sortOrder') || 'asc') as 'asc' | 'desc' 
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setSearchParams(prev => {
+      prev.set('sortField', sort.field);
+      prev.set('sortOrder', sort.order);
+      return prev;
+    }, { replace: true });
+  }, [sort, setSearchParams]);
 
   const handleAnalyze = async () => {
     if (!url) return;
@@ -70,7 +82,7 @@ function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; s
       setError('Analysis data not found. Please analyze the repository first.');
       return;
     }
-    navigate(`/file?path=${encodeURIComponent(filePath)}`);
+    navigate(`/file?path=${encodeURIComponent(filePath)}&mainSortField=${sort.field}&mainSortOrder=${sort.order}`);
   };
 
   const handleClearCache = async () => {
@@ -260,6 +272,8 @@ function FileDetail({ analysis }: { analysis: AnalysisResult | null }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const filePath = params.get('path');
+  const mainSortField = params.get('mainSortField') || 'name';
+  const mainSortOrder = params.get('mainSortOrder') || 'asc';
   
   if (!filePath) {
     return (
@@ -309,6 +323,8 @@ function FileDetail({ analysis }: { analysis: AnalysisResult | null }) {
           type: f.type || 'function'
         }))
       }}
+      mainSortField={mainSortField}
+      mainSortOrder={mainSortOrder}
     />
   );
 }

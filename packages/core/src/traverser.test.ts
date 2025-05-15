@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseFile, traverse, calculateComplexity } from './traverser';
+import { parseFile, traverse } from './traverser';
 
-describe.skip('Traverser', () => {
+describe('Traverser', () => {
   describe('parseFile', () => {
     it('should parse valid JavaScript code', () => {
       const code = 'function test() { console.log("test"); }';
@@ -25,53 +25,7 @@ describe.skip('Traverser', () => {
     });
   });
 
-  describe.skip('calculateComplexity', () => {
-    it('should calculate complexity for simple function', () => {
-      const code = 'function test() { console.log("test"); }';
-      const ast = parseFile(code);
-      const complexity = calculateComplexity(ast.program.body[0]);
-      expect(complexity).toBe(1);
-    });
-
-    it('should calculate complexity for function with if statement', () => {
-      const code = 'function test() { if (true) { console.log("test"); } }';
-      const ast = parseFile(code);
-      const complexity = calculateComplexity(ast.program.body[0]);
-      expect(complexity).toBe(2);
-    });
-
-    it('should calculate complexity for function with multiple conditions', () => {
-      const code = `
-        function test() {
-          if (true) {
-            if (false) {
-              console.log("test");
-            }
-          }
-        }
-      `;
-      const ast = parseFile(code);
-      const complexity = calculateComplexity(ast.program.body[0]);
-      expect(complexity).toBe(3);
-    });
-
-    it('should calculate complexity for function with loops', () => {
-      const code = `
-        function test() {
-          for (let i = 0; i < 10; i++) {
-            if (i % 2 === 0) {
-              console.log("even");
-            }
-          }
-        }
-      `;
-      const ast = parseFile(code);
-      const complexity = calculateComplexity(ast.program.body[0]);
-      expect(complexity).toBe(3);
-    });
-  });
-
-  describe.skip('traverse', () => {
+  describe('traverse', () => {
     it('should traverse and identify functions', () => {
       const code = `
         function test1() { console.log("test1"); }

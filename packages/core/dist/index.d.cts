@@ -71,6 +71,23 @@ interface TraverseOptions$1 {
     onControlFlow?: (node: Node) => void;
 }
 
+interface NodeInfo {
+    node: Node;
+    parent?: {
+        type: string;
+        key?: string;
+        value?: string;
+        method?: string;
+        isOptional?: boolean;
+    };
+}
+interface TraverseOptions {
+    onFunction?: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: NodeInfo['parent']) => void;
+    onControlFlow?: (node: Node) => void;
+}
+declare function traverse(node: Node, options: TraverseOptions, parent?: Node): void;
+declare function parseFile(content: string): _babel_parser.ParseResult<_babel_types.File>;
+
 declare class CodeAnalyzer {
     private readonly COMPLEXITY_THRESHOLD;
     private readonly LINES_THRESHOLD;
@@ -94,22 +111,4 @@ declare class CodeAnalyzer {
     analyzeFile(filePath: string): Promise<FileAnalysis | null>;
 }
 
-interface NodeInfo {
-    node: Node;
-    parent?: {
-        type: string;
-        key?: string;
-        value?: string;
-        method?: string;
-        isOptional?: boolean;
-    };
-}
-interface TraverseOptions {
-    onFunction?: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: NodeInfo['parent']) => void;
-    onControlFlow?: (node: Node) => void;
-}
-declare function traverse(node: Node, options: TraverseOptions, parent?: Node): void;
-declare function calculateComplexity(node: Node): number;
-declare function parseFile(content: string): _babel_parser.ParseResult<_babel_types.File>;
-
-export { type AnalysisResult, CodeAnalyzer, type FileAnalysis, type FunctionAnalysis, type FunctionMetrics, type NodeInfo$1 as NodeInfo, type TraverseOptions$1 as TraverseOptions, calculateComplexity, parseFile, traverse };
+export { type AnalysisResult, CodeAnalyzer, type FileAnalysis, type FunctionAnalysis, type FunctionMetrics, type NodeInfo$1 as NodeInfo, type TraverseOptions$1 as TraverseOptions, parseFile, traverse };

@@ -310,7 +310,10 @@ export function traverse(node: BabelNode, options: TraverseOptions, parent?: Bab
     node.type === 'WhileStatement' ||
     node.type === 'DoWhileStatement' ||
     node.type === 'CatchClause' ||
-    node.type === 'ConditionalExpression'
+    node.type === 'ConditionalExpression' ||
+    node.type === 'ForInStatement' ||
+    node.type === 'ForOfStatement' ||
+    node.type === 'LogicalExpression'
   )) {
     options.onControlFlow(node);
   }
@@ -331,127 +334,6 @@ export function traverse(node: BabelNode, options: TraverseOptions, parent?: Bab
       }
     }
   });
-}
-
-function getChildren(node: BabelNode): BabelNode[] {
-  const children: BabelNode[] = [];
-  
-  // Map node types to their child properties
-  const childProperties: Record<string, string[]> = {
-    Program: ['body'],
-    BlockStatement: ['body'],
-    FunctionDeclaration: ['body', 'params'],
-    ArrowFunctionExpression: ['body', 'params'],
-    FunctionExpression: ['body', 'params'],
-    IfStatement: ['consequent', 'alternate'],
-    SwitchCase: ['consequent'],
-    ForStatement: ['init', 'test', 'update', 'body'],
-    WhileStatement: ['test', 'body'],
-    DoWhileStatement: ['body', 'test'],
-    TryStatement: ['block', 'handler', 'finalizer'],
-    CatchClause: ['body'],
-    ConditionalExpression: ['test', 'consequent', 'alternate'],
-    CallExpression: ['arguments', 'callee'],
-    MemberExpression: ['object', 'property'],
-    ObjectExpression: ['properties'],
-    ArrayExpression: ['elements'],
-    JSXElement: ['openingElement', 'closingElement', 'children'],
-    JSXExpressionContainer: ['expression'],
-    VariableDeclaration: ['declarations'],
-    VariableDeclarator: ['init'],
-    ObjectProperty: ['value'],
-    ClassMethod: ['body', 'params'],
-    ClassProperty: ['value'],
-    ExportDefaultDeclaration: ['declaration'],
-    ExportNamedDeclaration: ['declaration'],
-    ClassDeclaration: ['body', 'superClass'],
-    ClassBody: ['body'],
-    MethodDefinition: ['value', 'key'],
-    Property: ['value', 'key'],
-    AssignmentExpression: ['left', 'right'],
-    BinaryExpression: ['left', 'right'],
-    LogicalExpression: ['left', 'right'],
-    UnaryExpression: ['argument'],
-    UpdateExpression: ['argument'],
-    NewExpression: ['arguments', 'callee'],
-    TaggedTemplateExpression: ['tag', 'quasi'],
-    TemplateLiteral: ['quasis', 'expressions'],
-    SequenceExpression: ['expressions'],
-    SpreadElement: ['argument'],
-    RestElement: ['argument'],
-    ArrayPattern: ['elements'],
-    ObjectPattern: ['properties'],
-    AssignmentPattern: ['left', 'right'],
-    YieldExpression: ['argument'],
-    AwaitExpression: ['argument'],
-    ImportDeclaration: ['specifiers', 'source'],
-    ImportSpecifier: ['imported', 'local'],
-    ImportDefaultSpecifier: ['local'],
-    ImportNamespaceSpecifier: ['local'],
-    ExportSpecifier: ['exported', 'local']
-  };
-
-  const properties = childProperties[node.type];
-  if (properties) {
-    for (const prop of properties) {
-      const value = (node as any)[prop];
-      if (Array.isArray(value)) {
-        children.push(...value.filter(Boolean));
-      } else if (value) {
-        children.push(value);
-      }
-    }
-  }
-
-  // Debug logging for function nodes
-  if (node.type === 'FunctionDeclaration' ||
-      node.type === 'ArrowFunctionExpression' ||
-      node.type === 'FunctionExpression') {
-    console.log(`Found ${children.length} children for ${node.type}:`, {
-      type: node.type,
-      id: (node as any).id?.name,
-      loc: node.loc,
-      children: children.map(child => ({
-        type: child.type,
-        loc: child.loc
-      }))
-    });
-  }
-
-  return children;
-}
-
-export function calculateComplexity(node: BabelNode): number {
-  let complexity = 1;
-
-  // Early exit para nodos simples
-  if (!node || 
-      node.type === 'StringLiteral' || 
-      node.type === 'NumericLiteral' || 
-      node.type === 'BooleanLiteral' ||
-      node.type === 'NullLiteral' ||
-      node.type === 'RegExpLiteral') {
-    return complexity;
-  }
-
-  // Incrementar complejidad solo para nodos de control de flujo
-  if (node.type === 'IfStatement' ||
-      node.type === 'SwitchCase' ||
-      node.type === 'ForStatement' ||
-      node.type === 'WhileStatement' ||
-      node.type === 'DoWhileStatement' ||
-      node.type === 'CatchClause' ||
-      node.type === 'ConditionalExpression') {
-    complexity++;
-  }
-
-  // Recorrer hijos solo si es necesario
-  const children = getChildren(node);
-  for (const child of children) {
-    complexity += calculateComplexity(child);
-  }
-
-  return complexity;
 }
 
 export function parseFile(content: string) {

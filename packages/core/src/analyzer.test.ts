@@ -31,7 +31,7 @@ describe('CodeAnalyzer', () => {
     tempFiles.forEach(removeTempFile);
   });
 
-  describe.only('analyzeFile', () => {
+  describe('analyzeFile', () => {
     it('should correctly identify function declarations', async () => {
       const content = `
         function testFunction() {
@@ -144,7 +144,7 @@ describe('CodeAnalyzer', () => {
       expect(result?.functions.some(f => f.name.includes('handleClick'))).toBe(true);
     });
 
-    it.only('should detect duplicated code blocks', async () => {
+    it('should detect duplicated code blocks', async () => {
       const content = `
         function duplicateFunction1() {
           const result = [];
@@ -178,7 +178,6 @@ describe('CodeAnalyzer', () => {
       const filePath = createTempFile(content);
       tempFiles.push(filePath);
       const result = await analyzer.analyzeFile(filePath);
-      console.log("_________________________ ", result)
       expect(result).not.toBeNull();
       expect(result?.functions).toHaveLength(3);
       expect(result?.duplicationPercentage).toBeGreaterThan(0);
