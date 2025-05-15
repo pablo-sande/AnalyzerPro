@@ -39,13 +39,75 @@ interface FunctionContext {
 class ContextualNamingSystem {
   private contextStack: FunctionContext[] = [];
   private namedFunctions: Map<string, string> = new Map();
-  private targetFile: string | null = null;
   private readonly CACHE_KEY_SEPARATOR = '::';
 
+  // Mapeo estático de tipos de contexto a nombres de función
+  private static readonly CONTEXT_NAME_MAPPINGS: Record<string, (ctx: FunctionContext) => string> = {
+    OptionalCallExpression: (ctx) => `${ctx.objectName}?.${ctx.method} callback`,
+    CallExpression: (ctx) => {
+      if (!ctx.method) return 'anonymous';
+      
+      // Detectar tipos específicos de callbacks
+      if (['then', 'catch', 'finally'].includes(ctx.method)) {
+        return `${ctx.method} handler`;
+      }
+      if (['map', 'filter', 'forEach', 'find', 'some', 'every', 'reduce'].includes(ctx.method)) {
+        return `${ctx.method} callback`;
+      }
+      if (ctx.method.startsWith('use')) {
+        return `${ctx.method} callback`;
+      }
+      return `${ctx.objectName}.${ctx.method} callback`;
+    },
+    JSXExpressionContainer: (ctx) => `${ctx.objectName}.${ctx.method} callback`
+  };
+
+  // Mapeo estático de tipos de nodo a extractores de contexto
+  private static readonly CONTEXT_EXTRACTORS: Record<string, (node: BabelNode) => FunctionContext | null> = {
+    OptionalCallExpression: (node) => {
+      const callee = (node as any).callee;
+      if (callee?.type === 'OptionalMemberExpression') {
+        return {
+          type: 'OptionalCallExpression',
+          objectName: callee.object?.name || 'object',
+          method: callee.property?.name,
+          isOptional: true,
+          loc: node.loc
+        };
+      }
+      return null;
+    },
+    CallExpression: (node) => {
+      const callee = (node as any).callee;
+      if (callee?.type === 'MemberExpression') {
+        return {
+          type: 'CallExpression',
+          objectName: callee.object?.name || 'object',
+          method: callee.property?.name,
+          loc: node.loc
+        };
+      }
+      return null;
+    },
+    JSXExpressionContainer: (node) => {
+      const expression = (node as any).expression;
+      if (expression?.type === 'CallExpression') {
+        const callee = expression.callee;
+        if (callee?.type === 'MemberExpression') {
+          return {
+            type: 'JSXExpressionContainer',
+            objectName: callee.object?.name || 'object',
+            method: callee.property?.name,
+            loc: node.loc
+          };
+        }
+      }
+      return null;
+    }
+  };
+
   private generateCacheKey(node: BabelNode, context?: FunctionContext): string {
-    const nodeId = `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}`;
-    const contextId = context ? `${context.type}-${context.method || ''}-${context.objectName || ''}` : 'no-context';
-    return `${nodeId}${this.CACHE_KEY_SEPARATOR}${contextId}`;
+    return `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}${this.CACHE_KEY_SEPARATOR}${context?.type || 'no-context'}`;
   }
 
   public pushContext(context: FunctionContext) {
@@ -77,30 +139,8 @@ class ContextualNamingSystem {
       return 'anonymous';
     }
 
-    // Mapeo de tipos de contexto a nombres de función
-    const contextNameMappings: Record<string, (context: FunctionContext) => string> = {
-      OptionalCallExpression: (ctx) => `${ctx.objectName}?.${ctx.method} callback`,
-      CallExpression: (ctx) => {
-        if (ctx.method) {
-          // Detectar tipos específicos de callbacks
-          if (['then', 'catch', 'finally'].includes(ctx.method)) {
-            return `${ctx.method} handler`;
-          }
-          if (['map', 'filter', 'forEach', 'find', 'some', 'every', 'reduce'].includes(ctx.method)) {
-            return `${ctx.method} callback`;
-          }
-          if (ctx.method.startsWith('use')) {
-            return `${ctx.method} callback`;
-          }
-          return `${ctx.objectName}.${ctx.method} callback`;
-        }
-        return 'anonymous';
-      },
-      JSXExpressionContainer: (ctx) => `${ctx.objectName}.${ctx.method} callback`
-    };
-
-    // Intentar obtener el nombre usando el mapeo
-    const mapping = contextNameMappings[currentContext.type];
+    // Intentar obtener el nombre usando el mapeo estático
+    const mapping = ContextualNamingSystem.CONTEXT_NAME_MAPPINGS[currentContext.type];
     let name = 'anonymous';
     
     if (mapping) {
@@ -115,69 +155,8 @@ class ContextualNamingSystem {
   }
 
   public extractContextFromNode(node: BabelNode): FunctionContext | null {
-    // Mapeo de tipos de nodo a funciones de extracción de contexto
-    const contextExtractors: Record<string, (node: BabelNode) => FunctionContext | null> = {
-      OptionalCallExpression: (node) => {
-        const callee = (node as any).callee;
-        if (callee?.type === 'OptionalMemberExpression') {
-          return {
-            type: 'OptionalCallExpression',
-            objectName: callee.object?.name || 'object',
-            method: callee.property?.name,
-            isOptional: true,
-            loc: node.loc ? {
-              start: { line: node.loc.start.line, column: node.loc.start.column },
-              end: { line: node.loc.end.line, column: node.loc.end.column }
-            } : null
-          };
-        }
-        return null;
-      },
-      CallExpression: (node) => {
-        const callee = (node as any).callee;
-        if (callee?.type === 'MemberExpression') {
-          return {
-            type: 'CallExpression',
-            objectName: callee.object?.name || 'object',
-            method: callee.property?.name,
-            loc: node.loc ? {
-              start: { line: node.loc.start.line, column: node.loc.start.column },
-              end: { line: node.loc.end.line, column: node.loc.end.column }
-            } : null
-          };
-        }
-        return null;
-      },
-      JSXExpressionContainer: (node) => {
-        const expression = (node as any).expression;
-        if (expression?.type === 'CallExpression') {
-          const callee = expression.callee;
-          if (callee?.type === 'MemberExpression') {
-            return {
-              type: 'JSXExpressionContainer',
-              objectName: callee.object?.name || 'object',
-              method: callee.property?.name,
-              loc: node.loc ? {
-                start: { line: node.loc.start.line, column: node.loc.start.column },
-                end: { line: node.loc.end.line, column: node.loc.end.column }
-              } : null
-            };
-          }
-        }
-        return null;
-      }
-    };
-
-    // Intentar extraer el contexto usando el mapeo
-    const extractor = contextExtractors[node.type as keyof typeof contextExtractors];
-    if (extractor) {
-      const context = extractor(node);
-      if (context) {
-        return context;
-      }
-    }
-
-    return null;
+    const extractor = ContextualNamingSystem.CONTEXT_EXTRACTORS[node.type as keyof typeof ContextualNamingSystem.CONTEXT_EXTRACTORS];
+    return extractor ? extractor(node) : null;
   }
 }
 
@@ -266,13 +245,22 @@ export function traverse(node: BabelNode, options: TraverseOptions, parent?: Bab
   if (!node) return;
 
   const namingSystem = new ContextualNamingSystem();
-  // Handle all types of functions
-  if (
-    (node.type === 'FunctionDeclaration' || 
-     node.type === 'ArrowFunctionExpression' || 
-     node.type === 'FunctionExpression') && 
-    options.onFunction
-  ) {
+
+  // Skip literals and other simple nodes
+  if (node.type === 'StringLiteral' || 
+      node.type === 'NumericLiteral' || 
+      node.type === 'BooleanLiteral' ||
+      node.type === 'NullLiteral' ||
+      node.type === 'RegExpLiteral') {
+    return;
+  }
+
+  // Handle functions
+  if (options.onFunction && (
+    node.type === 'FunctionDeclaration' ||
+    node.type === 'ArrowFunctionExpression' ||
+    node.type === 'FunctionExpression'
+  )) {
     const parentInfo = getParentInfo(parent);
     const context = namingSystem.extractContextFromNode(parent as BabelNode);
     
@@ -280,33 +268,27 @@ export function traverse(node: BabelNode, options: TraverseOptions, parent?: Bab
       namingSystem.pushContext(context);
     }
 
-    // Determinar el nombre de la función
     let functionName = 'anonymous';
 
-    // 1. Intentar obtener el nombre del nodo si es una función declarada
+    // Try to get function name from various sources
     if (node.type === 'FunctionDeclaration' && (node as any).id?.name) {
       functionName = (node as any).id.name;
-    }
-    // 2. Intentar obtener el nombre del parentInfo
-    else if (parentInfo) {
+    } else if (parentInfo) {
       if (parentInfo.type === 'CallExpression') {
         functionName = parentInfo.value || `${parentInfo.method} callback`;
       } else if (parentInfo.key) {
         functionName = parentInfo.key;
       }
-    }
-    // 3. Intentar obtener el nombre del contexto
-    else if (context) {
+    } else if (context) {
       functionName = namingSystem.generateName(node, parent);
     }
 
-    // Forzar el nombre en el nodo para funciones anónimas
+    // Force name on anonymous functions
     if ((node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') && 
         functionName !== 'anonymous') {
       (node as any).id = { type: 'Identifier', name: functionName };
     }
 
-    // Llamar a onFunction con la información del padre
     options.onFunction(node as FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, {
       type: parent?.type || 'unknown',
       key: parentInfo?.key || functionName,
@@ -320,41 +302,154 @@ export function traverse(node: BabelNode, options: TraverseOptions, parent?: Bab
     }
   }
 
-  // Handle control flow statements
-  if (
-    (node.type === 'IfStatement' ||
-     node.type === 'SwitchCase' ||
-     node.type === 'ForStatement' ||
-     node.type === 'WhileStatement' ||
-     node.type === 'DoWhileStatement' ||
-     node.type === 'CatchClause' ||
-     node.type === 'ConditionalExpression') &&
-    options.onControlFlow
-  ) {
+  // Handle control flow
+  if (options.onControlFlow && (
+    node.type === 'IfStatement' ||
+    node.type === 'SwitchCase' ||
+    node.type === 'ForStatement' ||
+    node.type === 'WhileStatement' ||
+    node.type === 'DoWhileStatement' ||
+    node.type === 'CatchClause' ||
+    node.type === 'ConditionalExpression'
+  )) {
     options.onControlFlow(node);
   }
 
-  // Recursively traverse child nodes
-  for (const key in node) {
+  // Recursively traverse all properties that might contain nodes
+  Object.keys(node).forEach(key => {
     const value = (node as any)[key];
+    
     if (value && typeof value === 'object') {
       if (Array.isArray(value)) {
-        value.forEach(child => traverse(child, options, node));
-      } else if (value.type) {
+        value.forEach(child => {
+          if (child && typeof child === 'object' && 'type' in child) {
+            traverse(child, options, node);
+          }
+        });
+      } else if ('type' in value) {
         traverse(value, options, node);
       }
     }
+  });
+}
+
+function getChildren(node: BabelNode): BabelNode[] {
+  const children: BabelNode[] = [];
+  
+  // Map node types to their child properties
+  const childProperties: Record<string, string[]> = {
+    Program: ['body'],
+    BlockStatement: ['body'],
+    FunctionDeclaration: ['body', 'params'],
+    ArrowFunctionExpression: ['body', 'params'],
+    FunctionExpression: ['body', 'params'],
+    IfStatement: ['consequent', 'alternate'],
+    SwitchCase: ['consequent'],
+    ForStatement: ['init', 'test', 'update', 'body'],
+    WhileStatement: ['test', 'body'],
+    DoWhileStatement: ['body', 'test'],
+    TryStatement: ['block', 'handler', 'finalizer'],
+    CatchClause: ['body'],
+    ConditionalExpression: ['test', 'consequent', 'alternate'],
+    CallExpression: ['arguments', 'callee'],
+    MemberExpression: ['object', 'property'],
+    ObjectExpression: ['properties'],
+    ArrayExpression: ['elements'],
+    JSXElement: ['openingElement', 'closingElement', 'children'],
+    JSXExpressionContainer: ['expression'],
+    VariableDeclaration: ['declarations'],
+    VariableDeclarator: ['init'],
+    ObjectProperty: ['value'],
+    ClassMethod: ['body', 'params'],
+    ClassProperty: ['value'],
+    ExportDefaultDeclaration: ['declaration'],
+    ExportNamedDeclaration: ['declaration'],
+    ClassDeclaration: ['body', 'superClass'],
+    ClassBody: ['body'],
+    MethodDefinition: ['value', 'key'],
+    Property: ['value', 'key'],
+    AssignmentExpression: ['left', 'right'],
+    BinaryExpression: ['left', 'right'],
+    LogicalExpression: ['left', 'right'],
+    UnaryExpression: ['argument'],
+    UpdateExpression: ['argument'],
+    NewExpression: ['arguments', 'callee'],
+    TaggedTemplateExpression: ['tag', 'quasi'],
+    TemplateLiteral: ['quasis', 'expressions'],
+    SequenceExpression: ['expressions'],
+    SpreadElement: ['argument'],
+    RestElement: ['argument'],
+    ArrayPattern: ['elements'],
+    ObjectPattern: ['properties'],
+    AssignmentPattern: ['left', 'right'],
+    YieldExpression: ['argument'],
+    AwaitExpression: ['argument'],
+    ImportDeclaration: ['specifiers', 'source'],
+    ImportSpecifier: ['imported', 'local'],
+    ImportDefaultSpecifier: ['local'],
+    ImportNamespaceSpecifier: ['local'],
+    ExportSpecifier: ['exported', 'local']
+  };
+
+  const properties = childProperties[node.type];
+  if (properties) {
+    for (const prop of properties) {
+      const value = (node as any)[prop];
+      if (Array.isArray(value)) {
+        children.push(...value.filter(Boolean));
+      } else if (value) {
+        children.push(value);
+      }
+    }
   }
+
+  // Debug logging for function nodes
+  if (node.type === 'FunctionDeclaration' ||
+      node.type === 'ArrowFunctionExpression' ||
+      node.type === 'FunctionExpression') {
+    console.log(`Found ${children.length} children for ${node.type}:`, {
+      type: node.type,
+      id: (node as any).id?.name,
+      loc: node.loc,
+      children: children.map(child => ({
+        type: child.type,
+        loc: child.loc
+      }))
+    });
+  }
+
+  return children;
 }
 
 export function calculateComplexity(node: BabelNode): number {
-  let complexity = 1; // Base complexity for the function itself
+  let complexity = 1;
 
-  traverse(node, {
-    onControlFlow: () => {
-      complexity++; // Increment complexity for each control flow statement
-    }
-  });
+  // Early exit para nodos simples
+  if (!node || 
+      node.type === 'StringLiteral' || 
+      node.type === 'NumericLiteral' || 
+      node.type === 'BooleanLiteral' ||
+      node.type === 'NullLiteral' ||
+      node.type === 'RegExpLiteral') {
+    return complexity;
+  }
+
+  // Incrementar complejidad solo para nodos de control de flujo
+  if (node.type === 'IfStatement' ||
+      node.type === 'SwitchCase' ||
+      node.type === 'ForStatement' ||
+      node.type === 'WhileStatement' ||
+      node.type === 'DoWhileStatement' ||
+      node.type === 'CatchClause' ||
+      node.type === 'ConditionalExpression') {
+    complexity++;
+  }
+
+  // Recorrer hijos solo si es necesario
+  const children = getChildren(node);
+  for (const child of children) {
+    complexity += calculateComplexity(child);
+  }
 
   return complexity;
 }
@@ -362,6 +457,37 @@ export function calculateComplexity(node: BabelNode): number {
 export function parseFile(content: string) {
   return parse(content, {
     sourceType: 'module',
-    plugins: ['typescript', 'jsx']
+    plugins: [
+      'jsx',
+      'typescript',
+      'classProperties',
+      'decorators-legacy',
+      'asyncGenerators',
+      'functionBind',
+      'functionSent',
+      'dynamicImport',
+      'doExpressions',
+      'objectRestSpread',
+      'optionalCatchBinding',
+      'optionalChaining',
+      ['pipelineOperator', { proposal: 'minimal' }],
+      'throwExpressions',
+      'classPrivateProperties',
+      'classPrivateMethods',
+      'exportDefaultFrom',
+      'exportNamespaceFrom',
+      'partialApplication',
+      'recordAndTuple',
+      'throwExpressions',
+      'topLevelAwait'
+    ],
+    errorRecovery: true,
+    allowAwaitOutsideFunction: true,
+    allowImportExportEverywhere: true,
+    allowReturnOutsideFunction: true,
+    allowSuperOutsideMethod: true,
+    allowUndeclaredExports: true,
+    ranges: true,
+    tokens: true
   });
 } 

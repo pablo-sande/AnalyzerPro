@@ -9,7 +9,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -40,7 +40,7 @@
     "eslint-config-custom": "workspace:*",
     "jsdom": "^26.1.0",
     "tsconfig": "workspace:*",
-    "tsup": "^8.0.2",
+    "tsup": "^8.4.0",
     "typescript": "^5.4.2",
     "vite": "^5.1.6",
     "vitest": "^3.1.3"

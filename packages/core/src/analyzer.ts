@@ -1,6 +1,6 @@
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
-import { AnalysisResult, FileAnalysis, FunctionMetrics } from './types.js';
+import type { FileAnalysis, FunctionMetrics, FunctionAnalysis, AnalysisResult } from './types';
 import type { 
   Node as BabelNode,
   FunctionDeclaration, 
@@ -21,7 +21,7 @@ import type {
   NumericLiteral,
   MemberExpression
 } from '@babel/types';
-import { parseFile, traverse, calculateComplexity } from './traverser.js';
+import { parseFile, traverse } from './traverser';
 
 interface ParentInfo {
   type: string;
@@ -34,6 +34,19 @@ interface ParentInfo {
       name: string;
     };
   };
+}
+
+interface NodeInfo {
+  type: string;
+  key?: string;
+  method?: string;
+  isOptional?: boolean;
+  value?: string;
+}
+
+interface TraverseOptions {
+  onFunction?: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: NodeInfo) => void;
+  onControlFlow?: (node: BabelNode) => void;
 }
 
 export class CodeAnalyzer {
@@ -54,9 +67,10 @@ export class CodeAnalyzer {
     FUNCTION: 'function' as const
   } as const;
 
-  private complexityCache: Map<string, number> = new Map();
-  private fanInCache: Map<string, number> = new Map();
-  private fanOutCache: Map<string, number> = new Map();
+  private complexityCache = new Map<string, number>();
+  private fanInCache = new Map<string, number>();
+  private fanOutCache = new Map<string, number>();
+  private readonly MAX_CACHE_SIZE = 1000;
 
   private clearCaches() {
     this.complexityCache.clear();
@@ -64,282 +78,322 @@ export class CodeAnalyzer {
     this.fanOutCache.clear();
   }
 
-  private getCacheKey(node: BabelNode): string {
+  private generateCacheKey(node: BabelNode): string {
     return `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}`;
   }
 
-  public async parseFile(filePath: string): Promise<FileAnalysis> {
-    this.clearCaches();
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    const ast = parseFile(content);  
+  private async parseFile(filePath: string): Promise<BabelNode | null> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      return parseFile(content);
+    } catch (error) {
+      console.error(`Error parsing file ${filePath}:`, error);
+      return null;
+    }
+  }
 
-    const functions: FunctionMetrics[] = [];
-    let totalLines = content.split('\n').length;
-    let totalComplexity = 0;
-    let maxComplexity = 0;
-    let totalFanIn = 0;
-    let totalFanOut = 0;
-    let totalWarnings = 0;
-    let totalDuplication = 0;
+  private analyzeFunction(node: BabelNode, filePath: string): FunctionAnalysis | null {
+    if (!node || !('type' in node)) return null;
 
-    traverse(ast, {
-      onFunction: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: ParentInfo) => {
-        let functionName = 'anonymous';
-        let functionType: FunctionMetrics['type'] = this.FUNCTION_TYPES.FUNCTION;
+    // Skip if not a function node
+    if (!['FunctionDeclaration', 'ArrowFunctionExpression', 'FunctionExpression'].includes(node.type)) {
+      return null;
+    }
 
-        // Si es una función nombrada, usar ese nombre
-        if ('id' in node && node.id) {
-          functionName = node.id.name;
-        }
-        // Si es un método de clase o propiedad de objeto
-        else if (parent && (parent.type === 'ClassMethod' || parent.type === 'ObjectProperty')) {
-          functionName = parent.key || 'anonymous';
-          functionType = this.FUNCTION_TYPES.METHOD;
-        }
-        // Si es una declaración de variable
-        else if (parent && parent.type === 'VariableDeclarator') {
-          functionName = parent.key || 'anonymous';
-        }
-        // Si es un callback en un CallExpression
-        else if (parent && parent.type === 'CallExpression') {
-          // Verificar si es un hook de React
-          const findClosestHook = (node: any): string | null => {
-            if (!node) return null;
-            
-            // Verificar si el nodo actual es una llamada a un hook
-            if (node.type === 'CallExpression' && 
-                node.callee?.type === 'Identifier' && 
-                this.REACT_HOOKS.includes(node.callee.name)) {
-              return node.callee.name;
-            }
-            
-            // Verificar si el nodo es un argumento de un hook
-            if (node.parent?.type === 'CallExpression' && 
-                node.parent.callee?.type === 'Identifier' && 
-                this.REACT_HOOKS.includes(node.parent.callee.name)) {
-              return node.parent.callee.name;
-            }
-            
-            return findClosestHook(node.parent);
-          };
+    const functionNode = node as FunctionDeclaration | ArrowFunctionExpression | FunctionExpression;
+    const functionName = (functionNode as any).id?.name || 'anonymous';
+    const functionSize = this.calculateFunctionSize(functionNode);
+    const complexity = this.calculateComplexity(functionNode);
+    const fanIn = this.calculateFanIn(functionNode, filePath);
+    const fanOut = this.calculateFanOut(functionNode, filePath);
 
-          const hookName = findClosestHook(node);
-          if (hookName) {
-            functionName = `${hookName} callback`;
-            functionType = this.FUNCTION_TYPES.HOOK;
-          }
-          else if (parent.method) {
-            if (this.PROMISE_METHODS.includes(parent.method as typeof this.PROMISE_METHODS[number])) {
-              functionName = `${parent.method} handler`;
-              functionType = this.FUNCTION_TYPES.PROMISE;
-            }
-            else if (this.ARRAY_METHODS.includes(parent.method as typeof this.ARRAY_METHODS[number])) {
-              functionName = `${parent.method} callback`;
-              functionType = this.FUNCTION_TYPES.ARRAY;
-            }
-            else {
-              functionName = `${parent.method} callback`;
-              functionType = this.FUNCTION_TYPES.CALLBACK;
-            }
-          }
-          else if (parent.key) {
-            functionName = `${parent.key} callback`;
-            functionType = this.FUNCTION_TYPES.CALLBACK;
-          }
-          else {
-            functionName = 'anonymous callback';
-            functionType = this.FUNCTION_TYPES.CALLBACK;
-          }
-        }
-
-        // Calcular métricas con caché
-        const cacheKey = this.getCacheKey(node);
-        let complexity = this.complexityCache.get(cacheKey);
-        if (complexity === undefined) {
-          complexity = calculateComplexity(node);
-          this.complexityCache.set(cacheKey, complexity);
-        }
-
-        const lines = node.loc ? node.loc.end.line - node.loc.start.line + 1 : 0;
-        const startLine = node.loc ? node.loc.start.line : 0;
-
-        // Actualizar métricas globales
-        totalComplexity += complexity;
-        maxComplexity = Math.max(maxComplexity, complexity);
-
-        // Calcular fan-in y fan-out con caché
-        let fanIn = this.fanInCache.get(cacheKey);
-        if (fanIn === undefined) {
-          fanIn = this.calculateFanIn(node, ast);
-          this.fanInCache.set(cacheKey, fanIn);
-        }
-
-        let fanOut = this.fanOutCache.get(cacheKey);
-        if (fanOut === undefined) {
-          fanOut = this.calculateFanOut(node, ast);
-          this.fanOutCache.set(cacheKey, fanOut);
-        }
-
-        totalFanIn += fanIn;
-        totalFanOut += fanOut;
-
-        // Detectar warnings
-        const hasWarning = lines > this.LINES_THRESHOLD || complexity > this.COMPLEXITY_THRESHOLD;
-        if (hasWarning) {
-          totalWarnings++;
-        }
-
-        // Calcular duplicación para esta función
-        const functionContent = content.split('\n')
-          .slice(
-            (node.loc?.start.line || 1) - 1,
-            node.loc?.end.line || 1
-          )
-          .join('\n');
-        const duplication = this.calculateFunctionDuplication(functionContent);
-        totalDuplication += duplication;
-
-        const functionInfo = {
-          name: functionName,
-          lines,
-          startLine,
-          complexity,
-          fanIn,
-          fanOut,
-          type: functionType,
-          hasWarning,
-          duplication
-        };
-
-        functions.push(functionInfo);
-
-      },
-    });
-
-
-
-    // Get file stats for file size
-    const stats = await fs.promises.stat(filePath);
-
-    // Calculate average complexity for the file
-    const complexity = functions.length > 0 ? totalComplexity / functions.length : 0;
-    const duplicationPercentage = functions.length > 0 ? totalDuplication / functions.length : 0;
+    // Analyze function characteristics
+    const characteristics = this.analyzeFunctionCharacteristics(functionNode);
 
     return {
-      path: filePath,
-      name: path.basename(filePath),
-      extension: path.extname(filePath),
-      totalLines,
-      functions,
-      functionsCount: functions.length,
+      name: functionName,
+      type: this.determineFunctionType(functionNode),
+      size: functionSize,
       complexity,
-      maxComplexity,
-      averageFanIn: functions.length > 0 ? totalFanIn / functions.length : 0,
-      averageFanOut: functions.length > 0 ? totalFanOut / functions.length : 0,
-      duplicationPercentage,
-      warningCount: totalWarnings,
-      fileSize: stats.size
+      fanIn,
+      fanOut,
+      characteristics,
+      location: {
+        file: filePath,
+        start: functionNode.loc?.start,
+        end: functionNode.loc?.end
+      }
     };
   }
 
-  private calculateFanIn(node: BabelNode, ast: BabelNode): number {
-    // Implementación simplificada: contar referencias a la función
-    let fanIn = 0;
-    traverse(ast, {
-      onFunction: (funcNode) => {
-        if (funcNode !== node && this.hasReferenceToNode(funcNode, node)) {
-          fanIn++;
+  private analyzeFunctionCharacteristics(node: BabelNode): string[] {
+    const characteristics: string[] = [];
+    
+    // Analyze function properties
+    if (node.type === 'ArrowFunctionExpression') {
+      characteristics.push('arrow');
+    }
+    
+    if ((node as any).async) {
+      characteristics.push('async');
+    }
+    
+    if ((node as any).generator) {
+      characteristics.push('generator');
+    }
+
+    // Analyze function body
+    const body = (node as any).body;
+    if (body) {
+      // Check for common patterns
+      if (this.containsPattern(body, 'await')) {
+        characteristics.push('uses-await');
+      }
+      if (this.containsPattern(body, 'Promise')) {
+        characteristics.push('uses-promises');
+      }
+      if (this.containsPattern(body, 'useState') || this.containsPattern(body, 'useEffect')) {
+        characteristics.push('react-hook');
+      }
+      if (this.containsPattern(body, 'map') || this.containsPattern(body, 'filter')) {
+        characteristics.push('array-operation');
+      }
+    }
+
+    return characteristics;
+  }
+
+  private containsPattern(node: BabelNode, pattern: string): boolean {
+    let found = false;
+    traverse(node, {
+      onControlFlow: (node: BabelNode) => {
+        if (node.type === 'Identifier' && (node as Identifier).name.includes(pattern)) {
+          found = true;
         }
       }
     });
+    return found;
+  }
+
+  private determineFunctionType(node: BabelNode): string {
+    const characteristics = this.analyzeFunctionCharacteristics(node);
+    
+    // Determine type based on characteristics and context
+    if (characteristics.includes('react-hook')) {
+      return 'react-hook';
+    }
+    if (characteristics.includes('async') || characteristics.includes('uses-promises')) {
+      return 'async';
+    }
+    if (characteristics.includes('generator')) {
+      return 'generator';
+    }
+    if (characteristics.includes('arrow')) {
+      return 'arrow';
+    }
+    
+    return 'regular';
+  }
+
+  private calculateFunctionSize(node: BabelNode): number {
+    if (!node.loc) return 0;
+    return node.loc.end.line - node.loc.start.line + 1;
+  }
+
+  private calculateComplexity(node: BabelNode): number {
+    const cacheKey = this.generateCacheKey(node);
+    if (this.complexityCache.has(cacheKey)) {
+      return this.complexityCache.get(cacheKey)!;
+    }
+
+    let complexity = 1;
+
+    traverse(node, {
+      onControlFlow: (node: BabelNode) => {
+        if (['IfStatement', 'SwitchCase', 'ForStatement', 'WhileStatement', 
+             'DoWhileStatement', 'CatchClause', 'ConditionalExpression'].includes(node.type)) {
+          complexity++;
+        }
+      }
+    });
+
+    if (this.complexityCache.size >= this.MAX_CACHE_SIZE) {
+      this.complexityCache.clear();
+    }
+    this.complexityCache.set(cacheKey, complexity);
+    return complexity;
+  }
+
+  private calculateFanIn(node: BabelNode, filePath: string): number {
+    const cacheKey = this.generateCacheKey(node);
+    if (this.fanInCache.has(cacheKey)) {
+      return this.fanInCache.get(cacheKey)!;
+    }
+
+    let fanIn = 0;
+    const functionName = (node as any).id?.name;
+
+    if (functionName) {
+      traverse(node, {
+        onControlFlow: (node: BabelNode) => {
+          if (node.type === 'Identifier' && (node as Identifier).name === functionName) {
+            fanIn++;
+          }
+        }
+      });
+    }
+
+    if (this.fanInCache.size >= this.MAX_CACHE_SIZE) {
+      this.fanInCache.clear();
+    }
+    this.fanInCache.set(cacheKey, fanIn);
     return fanIn;
   }
 
-  private calculateFanOut(node: BabelNode, ast: BabelNode): number {
-    // Implementación simplificada: contar llamadas a otras funciones
+  private calculateFanOut(node: BabelNode, filePath: string): number {
+    const cacheKey = this.generateCacheKey(node);
+    if (this.fanOutCache.has(cacheKey)) {
+      return this.fanOutCache.get(cacheKey)!;
+    }
+
     let fanOut = 0;
-    traverse(ast, {
-      onControlFlow: (controlNode) => {
-        if (this.isNodeInsideFunction(controlNode, node) && 
-            controlNode.type === 'CallExpression') {
+    traverse(node, {
+      onControlFlow: (node: BabelNode) => {
+        if (node.type === 'CallExpression') {
           fanOut++;
         }
       }
     });
+
+    if (this.fanOutCache.size >= this.MAX_CACHE_SIZE) {
+      this.fanOutCache.clear();
+    }
+    this.fanOutCache.set(cacheKey, fanOut);
     return fanOut;
   }
 
-  private hasReferenceToNode(node: BabelNode, targetNode: BabelNode): boolean {
-    // Implementación simplificada: verificar si el nodo hace referencia al nodo objetivo
-    if (!node || !targetNode) return false;
-    
-    if (node.type === 'CallExpression' && 
-        (node as any).callee?.type === 'Identifier' &&
-        (node as any).callee?.name === (targetNode as any).id?.name) {
-      return true;
+  async analyzeRepo(repoPath: string): Promise<AnalysisResult> {
+    const files = await this.findFiles(repoPath);
+    const functions: FunctionAnalysis[] = [];
+    const fileAnalyses: FileAnalysis[] = [];
+
+    for (const file of files) {
+      try {
+        const fileAnalysis = await this.analyzeFile(file);
+        if (fileAnalysis) {
+          fileAnalyses.push(fileAnalysis);
+          functions.push(...fileAnalysis.functions.map(f => ({
+            name: f.name,
+            type: f.type,
+            size: f.lines,
+            complexity: f.complexity,
+            fanIn: f.fanIn,
+            fanOut: f.fanOut,
+            characteristics: [],
+            location: {
+              file: fileAnalysis.path,
+              start: { line: f.startLine, column: 0 },
+              end: { line: f.startLine + f.lines, column: 0 }
+            }
+          })));
+        }
+      } catch (error) {
+        console.error(`Error analyzing file ${file}:`, error);
+      }
     }
 
-    return false;
+    return {
+      functions,
+      files: fileAnalyses,
+      summary: {
+        totalFiles: fileAnalyses.length,
+        totalLines: fileAnalyses.reduce((sum, file) => sum + file.totalLines, 0),
+        totalFunctions: functions.length,
+        errorCount: 0,
+        functionsOver50Lines: functions.filter(f => f.size > 50).length,
+        functionsOverComplexity10: functions.filter(f => f.complexity > 10).length,
+        averageComplexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
+        averageDuplication: fileAnalyses.reduce((sum, file) => sum + file.duplicationPercentage, 0) / fileAnalyses.length || 0
+      }
+    };
   }
 
-  private isNodeInsideFunction(node: BabelNode, functionNode: BabelNode): boolean {
-    // Implementación simplificada: verificar si el nodo está dentro de la función
-    if (!node.loc || !functionNode.loc) return false;
-    
-    return node.loc.start.line >= functionNode.loc.start.line &&
-           node.loc.end.line <= functionNode.loc.end.line;
-  }
-
-  private calculateFunctionDuplication(content: string): number {
-    const lines = content.split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0 && !line.startsWith('//') && !line.startsWith('/*'));
-
-    if (lines.length === 0) return 0;
-
-    const uniqueLines = new Set(lines);
-    return (lines.length - uniqueLines.size) / lines.length;
-  }
-
-  public async analyzeRepo(repoPath: string): Promise<AnalysisResult> {
-    const files: FileAnalysis[] = [];
-    const jsExtensions = ['.js', '.jsx', '.ts', '.tsx'];
-
+  private async findFiles(repoPath: string): Promise<string[]> {
+    const files: string[] = [];
     const processDirectory = async (dirPath: string) => {
-      const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
+      try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
         
-        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'dist' && entry.name !== 'build') {
-          await processDirectory(fullPath);
-        } else if (entry.isFile() && jsExtensions.includes(path.extname(entry.name)) && !entry.name.includes('dist') && !entry.name.includes('build') && !entry.name.includes('_astro') && !entry.name.includes('mocks')) {
-          try {
-            const analysis = await this.parseFile(fullPath);
-            files.push(analysis);
-          } catch (error) {
-            console.error(`Error analyzing ${fullPath}:`, error);
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          
+          if (entry.isDirectory()) {
+            if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+              await processDirectory(fullPath);
+            }
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+              files.push(fullPath);
+            }
           }
         }
+      } catch (error) {
+        console.error(`Error processing directory ${dirPath}:`, error);
       }
     };
 
     await processDirectory(repoPath);
+    return files;
+  }
 
-    const summary = {
-      totalFiles: files.length,
-      totalLines: files.reduce((sum, file) => sum + file.totalLines, 0),
-      functionsOver50Lines: files.reduce((sum, file) => 
-        sum + file.functions.filter((f: FunctionMetrics) => f.lines > 50).length, 0),
-      functionsOverComplexity10: files.reduce((sum, file) => 
-        sum + file.functions.filter((f: FunctionMetrics) => f.complexity > 10).length, 0),
-      averageComplexity: files.reduce((sum, file) => 
-        sum + file.functions.reduce((fSum: number, f: FunctionMetrics) => fSum + f.complexity, 0), 0) / 
-        files.reduce((sum, file) => sum + file.functions.length, 0),
-      averageDuplication: files.reduce((sum, file) => 
-        sum + file.duplicationPercentage, 0) / files.length,
-    };
+  private async analyzeFile(filePath: string): Promise<FileAnalysis | null> {
+    try {
+      const ast = await this.parseFile(filePath);
+      if (!ast) return null;
 
-    return { files, summary };
+      const fileContent = await fs.readFile(filePath, 'utf-8');
+      const lines = fileContent.split('\n').filter((line: string) => line.trim().length > 0).length;
+      const functions: FunctionMetrics[] = [];
+
+      traverse(ast, {
+        onFunction: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression) => {
+          const analysis = this.analyzeFunction(node, filePath);
+          if (analysis) {
+            functions.push({
+              name: analysis.name,
+              lines: analysis.size,
+              startLine: analysis.location.start?.line || 0,
+              complexity: analysis.complexity,
+              fanIn: analysis.fanIn,
+              fanOut: analysis.fanOut,
+              type: analysis.type as any,
+              hasWarning: analysis.size > 50 || analysis.complexity > 10
+            });
+          }
+        }
+      });
+
+      const stats = await fs.stat(filePath);
+
+      return {
+        path: filePath,
+        name: path.basename(filePath),
+        extension: path.extname(filePath),
+        totalLines: lines,
+        functions,
+        functionsCount: functions.length,
+        complexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
+        maxComplexity: Math.max(...functions.map(f => f.complexity), 0),
+        averageFanIn: functions.reduce((sum, f) => sum + f.fanIn, 0) / functions.length || 0,
+        averageFanOut: functions.reduce((sum, f) => sum + f.fanOut, 0) / functions.length || 0,
+        duplicationPercentage: functions.filter(f => f.fanIn > 1).length / functions.length * 100 || 0,
+        warningCount: functions.filter(f => f.hasWarning).length,
+        fileSize: stats.size
+      };
+    } catch (error) {
+      console.error(`Error analyzing file ${filePath}:`, error);
+      return null;
+    }
   }
 } 

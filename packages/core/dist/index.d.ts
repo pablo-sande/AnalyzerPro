@@ -1,3 +1,7 @@
+import * as _babel_types from '@babel/types';
+import { FunctionDeclaration, ArrowFunctionExpression, FunctionExpression, Node } from '@babel/types';
+import * as _babel_parser from '@babel/parser';
+
 interface FunctionMetrics {
     name: string;
     lines: number;
@@ -23,16 +27,53 @@ interface FileAnalysis {
     warningCount: number;
     fileSize: number;
 }
+interface FunctionAnalysis {
+    name: string;
+    type: string;
+    size: number;
+    complexity: number;
+    fanIn: number;
+    fanOut: number;
+    characteristics: string[];
+    location: {
+        file: string;
+        start?: {
+            line: number;
+            column: number;
+        };
+        end?: {
+            line: number;
+            column: number;
+        };
+    };
+}
 interface AnalysisResult {
+    functions: FunctionAnalysis[];
     files: FileAnalysis[];
     summary: {
         totalFiles: number;
         totalLines: number;
+        totalFunctions: number;
+        errorCount: number;
         functionsOver50Lines: number;
         functionsOverComplexity10: number;
         averageComplexity: number;
         averageDuplication: number;
     };
+}
+interface NodeInfo$1 {
+    node: Node;
+    parent?: {
+        type: string;
+        key?: string;
+        value?: string;
+        method?: string;
+        isOptional?: boolean;
+    };
+}
+interface TraverseOptions$1 {
+    onFunction?: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: NodeInfo$1['parent']) => void;
+    onControlFlow?: (node: Node) => void;
 }
 
 declare class CodeAnalyzer {
@@ -47,15 +88,39 @@ declare class CodeAnalyzer {
     private complexityCache;
     private fanInCache;
     private fanOutCache;
+    private readonly MAX_CACHE_SIZE;
     private clearCaches;
-    private getCacheKey;
-    parseFile(filePath: string): Promise<FileAnalysis>;
+    private generateCacheKey;
+    private parseFile;
+    private analyzeFunction;
+    private analyzeFunctionCharacteristics;
+    private containsPattern;
+    private determineFunctionType;
+    private calculateFunctionSize;
+    private calculateComplexity;
     private calculateFanIn;
     private calculateFanOut;
-    private hasReferenceToNode;
-    private isNodeInsideFunction;
-    private calculateFunctionDuplication;
     analyzeRepo(repoPath: string): Promise<AnalysisResult>;
+    private findFiles;
+    private analyzeFile;
 }
 
-export { type AnalysisResult, CodeAnalyzer, type FileAnalysis, type FunctionMetrics };
+interface NodeInfo {
+    node: Node;
+    parent?: {
+        type: string;
+        key?: string;
+        value?: string;
+        method?: string;
+        isOptional?: boolean;
+    };
+}
+interface TraverseOptions {
+    onFunction?: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: NodeInfo['parent']) => void;
+    onControlFlow?: (node: Node) => void;
+}
+declare function traverse(node: Node, options: TraverseOptions, parent?: Node): void;
+declare function calculateComplexity(node: Node): number;
+declare function parseFile(content: string): _babel_parser.ParseResult<_babel_types.File>;
+
+export { type AnalysisResult, CodeAnalyzer, type FileAnalysis, type FunctionAnalysis, type FunctionMetrics, type NodeInfo$1 as NodeInfo, type TraverseOptions$1 as TraverseOptions, calculateComplexity, parseFile, traverse };

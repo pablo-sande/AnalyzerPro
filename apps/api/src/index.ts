@@ -2,7 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import { Redis } from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
-import { AnalysisResult, FileAnalysis, FunctionMetrics, CodeAnalyzer } from '@code-analyzer-pro/core';
+import { CodeAnalyzer } from '@code-analyzer-pro/core';
+import type { AnalysisResult, FileAnalysis, FunctionMetrics } from '@code-analyzer-pro/core';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
@@ -61,61 +62,36 @@ async function cleanupOldTempDirs() {
   }
 }
 
+// Helper function to aggregate all functions from all files
+function getAllFunctions(result: AnalysisResult) {
+  return result.files.flatMap((file: FileAnalysis) =>
+    (file.functions || []).map((func: FunctionMetrics) => ({
+      ...func,
+      location: {
+        file: file.path
+      },
+      size: (func as any).size ?? func.lines ?? 0
+    }))
+  );
+}
+
 // Helper function to clone and analyze a GitHub repository
-export async function analyzeRepo(githubUrl: string): Promise<AnalysisResult> {
+async function analyzeRepo(githubUrl: string): Promise<AnalysisResult> {
   // Validate GitHub URL
   if (!githubUrl.startsWith('https://github.com/')) {
     throw new Error('Invalid GitHub repository URL');
   }
 
-  // Limpiar directorios temporales antiguos
-  await cleanupOldTempDirs();
-
-  // Verificar espacio disponible
-  const { free } = await checkDiskSpace(os.tmpdir());
-  const requiredSpace = 1024 * 1024 * 1024; // 1GB mínimo requerido
-  if (free < requiredSpace) {
-    throw new Error(`Not enough disk space. Required: 1GB, Available: ${(free / 1024 / 1024 / 1024).toFixed(2)}GB`);
-  }
-
-  // Create a temporary directory
+  // Create temporary directory
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'repo-'));
   
   try {
-    // Clone the repository with optimizations
-    try {
-      // Use single branch for better performance
-      await execAsync(`git clone --single-branch ${githubUrl} ${tempDir}`);
-      
-      // Check repository size
-      const { stdout: sizeOutput } = await execAsync(`du -s ${tempDir}`);
-      const sizeInMB = parseInt(sizeOutput.split('\t')[0]) / 1024;
-      
-      if (sizeInMB > 500) { // 500MB limit
-        throw new Error(`Repository size (${sizeInMB.toFixed(2)}MB) exceeds the 500MB limit`);
-      }
-    } catch (error) {
-      const err = error as Error & { code?: number; stderr?: string };
-      if (err.code === 128) {
-        if (err.stderr?.includes('No space left on device')) {
-          throw new Error('Not enough disk space to clone the repository. Please free up some space and try again.');
-        }
-        if (err.stderr?.includes('Repository not found')) {
-          throw new Error(`Repository not found: ${githubUrl}`);
-        }
-      }
-      throw new Error(`Failed to clone repository: ${err.message}`);
-    }
+    // Clone the repository
+    await execAsync(`git clone --single-branch ${githubUrl} ${tempDir}`);
     
     // Analyze the repository
     const analyzer = new CodeAnalyzer();
     const result = await analyzer.analyzeRepo(tempDir);
-    
-    // Clean up file paths by removing the temporary directory prefix
-    result.files = result.files.map((file: FileAnalysis) => ({
-      ...file,
-      path: file.path.replace(tempDir, '').replace(/^[\/\\]/, '') // Remove temp dir prefix and leading slash
-    }));
     
     return result;
   } finally {
@@ -164,67 +140,53 @@ app.get('/metrics/:id', async (req, res) => {
 app.get('/analyze', async (req, res) => {
   try {
     const { url, search, sortBy, sortOrder } = req.query;
-    
     if (!url) {
       return res.status(400).json({ error: 'URL parameter is required' });
     }
-
-    // Check cache
     const cacheKey = `analysis:${url}`;
     const cachedResult = await redis.get(cacheKey);
-    
     let result: AnalysisResult;
-    
     if (cachedResult) {
       result = JSON.parse(cachedResult) as AnalysisResult;
     } else {
-      // If not in cache, clone and analyze the repository
       result = await analyzeRepo(url as string);
-      // Cache the result
-      await redis.set(cacheKey, JSON.stringify(result), 'EX', 3600); // Cache for 1 hour
+      await redis.set(cacheKey, JSON.stringify(result), 'EX', 3600);
     }
-    
-    // Apply filtering and sorting to the result
-    let filteredFiles = [...result.files];
-    
+    // Aggregate all functions from all files
+    let allFunctions = getAllFunctions(result);
     // Apply search filter if provided
     if (search) {
       const searchTerm = (search as string).toLowerCase();
-      filteredFiles = filteredFiles.filter(file => 
-        file.path.toLowerCase().includes(searchTerm)
+      allFunctions = allFunctions.filter(func =>
+        func.location.file.toLowerCase().includes(searchTerm) ||
+        func.name.toLowerCase().includes(searchTerm)
       );
     }
-    
     // Apply sorting if provided
     if (sortBy) {
       const order = sortOrder === 'desc' ? -1 : 1;
-      filteredFiles.sort((a, b) => {
+      allFunctions.sort((a, b) => {
         switch (sortBy) {
-          case 'lines':
-            return (a.totalLines - b.totalLines) * order;
-          case 'functions':
-            return (a.functions.length - b.functions.length) * order;
-          case 'complexity':
-            return (a.complexity - b.complexity) * order;
-          case 'duplication':
-            return (a.duplicationPercentage - b.duplicationPercentage) * order;
-          case 'name':
-            return a.path.localeCompare(b.path) * order;
           case 'size':
-            return (a.fileSize - b.fileSize) * order;
-          case 'warnings':
-            const warningsA = a.functions.filter((f: FunctionMetrics) => f.lines > 50 || f.complexity > 10).length;
-            const warningsB = b.functions.filter((f: FunctionMetrics) => f.lines > 50 || f.complexity > 10).length;
-            return (warningsA - warningsB) * order;
+            return ((a.size || a.lines || 0) - (b.size || b.lines || 0)) * order;
+          case 'complexity':
+            return ((a.complexity || 0) - (b.complexity || 0)) * order;
+          case 'fanIn':
+            return ((a.fanIn || 0) - (b.fanIn || 0)) * order;
+          case 'fanOut':
+            return ((a.fanOut || 0) - (b.fanOut || 0)) * order;
+          case 'name':
+            return a.name.localeCompare(b.name) * order;
+          case 'file':
+            return a.location.file.localeCompare(b.location.file) * order;
           default:
             return 0;
         }
       });
     }
-
     res.json({
       ...result,
-      files: filteredFiles
+      functions: allFunctions
     });
   } catch (error) {
     console.error('Error analyzing repository:', error);
@@ -234,9 +196,9 @@ app.get('/analyze', async (req, res) => {
 
 // Endpoint para análisis detallado de un archivo
 app.get('/analyze/file', async (req, res) => {
-  const { url, path } = req.query;
+  const { url, path: filePath } = req.query;
 
-  if (!url || !path) {
+  if (!url || !filePath) {
     return res.status(400).json({ error: 'URL and path are required' });
   }
 
@@ -250,33 +212,18 @@ app.get('/analyze/file', async (req, res) => {
     }
 
     const analysis = JSON.parse(cachedResult) as AnalysisResult;
-    const fileAnalysis = analysis.files.find((f: FileAnalysis) => f.path === path);
+    // Find the file
+    const fileAnalysis = analysis.files.find((f: FileAnalysis) => f.path === filePath);
 
     if (!fileAnalysis) {
       return res.status(404).json({ error: 'File not found in analysis' });
     }
 
-    // Formatear el análisis para una mejor visualización
-    const formattedAnalysis = {
-      path: fileAnalysis.path,
-      name: fileAnalysis.name,
-      extension: fileAnalysis.extension,
-      totalLines: fileAnalysis.totalLines,
-      functionsCount: fileAnalysis.functionsCount,
-      complexity: fileAnalysis.complexity,
-      duplicationPercentage: fileAnalysis.duplicationPercentage,
-      functions: fileAnalysis.functions.map((func: FunctionMetrics) => ({
-        name: func.name,
-        complexity: func.complexity,
-        lines: func.lines,
-        startLine: func.startLine,
-        fanIn: func.fanIn,
-        fanOut: func.fanOut
-      })),
-      fileSize: fileAnalysis.fileSize
-    };
-
-    res.json(formattedAnalysis);
+    // Return all functions in the file
+    res.json({
+      ...fileAnalysis,
+      functions: fileAnalysis.functions
+    });
   } catch (error) {
     console.error('Error analyzing file:', error);
     res.status(500).json({ error: 'Failed to analyze file' });
