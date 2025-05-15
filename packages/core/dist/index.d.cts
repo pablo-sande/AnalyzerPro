@@ -9,6 +9,7 @@ interface FunctionMetrics {
     complexity: number;
     type: 'function' | 'method' | 'promise' | 'array' | 'hook' | 'callback';
     hasWarning: boolean;
+    code?: string;
 }
 interface FileAnalysis {
     path: string;
@@ -71,17 +72,13 @@ interface TraverseOptions$1 {
 }
 
 declare class CodeAnalyzer {
-    private readonly ARRAY_METHODS;
-    private readonly PROMISE_METHODS;
-    private readonly REACT_HOOKS;
     private readonly COMPLEXITY_THRESHOLD;
     private readonly LINES_THRESHOLD;
-    private readonly DUPLICATION_THRESHOLD;
-    private readonly CACHE_SIZE;
+    private readonly SIMILARITY_THRESHOLD;
+    private readonly MIN_CODE_LENGTH;
     private readonly FUNCTION_TYPES;
     private complexityCache;
     private readonly MAX_CACHE_SIZE;
-    private clearCaches;
     private generateCacheKey;
     private parseFile;
     private analyzeFunction;
@@ -90,9 +87,11 @@ declare class CodeAnalyzer {
     private determineFunctionType;
     private calculateFunctionSize;
     private calculateComplexity;
+    private normalizeCode;
+    private findDuplicatedCode;
     analyzeRepo(repoPath: string): Promise<AnalysisResult>;
     private findFiles;
-    private analyzeFile;
+    analyzeFile(filePath: string): Promise<FileAnalysis | null>;
 }
 
 interface NodeInfo {

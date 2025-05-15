@@ -36,27 +36,11 @@ interface ParentInfo {
   };
 }
 
-interface NodeInfo {
-  type: string;
-  key?: string;
-  method?: string;
-  isOptional?: boolean;
-  value?: string;
-}
-
-interface TraverseOptions {
-  onFunction?: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: NodeInfo) => void;
-  onControlFlow?: (node: BabelNode) => void;
-}
-
 export class CodeAnalyzer {
-  private readonly ARRAY_METHODS = ['map', 'filter', 'forEach', 'find', 'some', 'every', 'reduce'] as const;
-  private readonly PROMISE_METHODS = ['then', 'catch', 'finally'] as const;
-  private readonly REACT_HOOKS = ['useEffect', 'useCallback', 'useMemo', 'useState', 'useRef', 'useContext'] as const;
   private readonly COMPLEXITY_THRESHOLD = 10;
   private readonly LINES_THRESHOLD = 50;
-  private readonly DUPLICATION_THRESHOLD = 0.8;
-  private readonly CACHE_SIZE = 1000;
+  private readonly SIMILARITY_THRESHOLD = 0.9; // Lower threshold to catch more potential duplications
+  private readonly MIN_CODE_LENGTH = 20; // Minimum characters to consider for duplication
 
   private readonly FUNCTION_TYPES = {
     METHOD: 'method' as const,
@@ -69,10 +53,6 @@ export class CodeAnalyzer {
 
   private complexityCache = new Map<string, number>();
   private readonly MAX_CACHE_SIZE = 1000;
-
-  private clearCaches() {
-    this.complexityCache.clear();
-  }
 
   private generateCacheKey(node: BabelNode): string {
     return `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}`;
@@ -216,6 +196,41 @@ export class CodeAnalyzer {
     return complexity;
   }
 
+  private normalizeCode(code: string): string {
+    // Remove HTML tags and normalize whitespace
+    return code
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '') // Remove comments
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+  }
+
+  private findDuplicatedCode(functions: FunctionMetrics[]): number {
+    // Get all lines from all functions
+    const allLines = functions.flatMap(f => {
+      if (!f.code) return [];
+      return f.code.split('\n')
+        .map(line => this.normalizeCode(line))
+        .filter(line => line.length > 5); // Only keep lines with more than 5 characters
+    });
+
+    // Count occurrences of each line
+    const lineCounts = new Map<string, number>();
+    allLines.forEach(line => {
+      lineCounts.set(line, (lineCounts.get(line) || 0) + 1);
+    });
+
+    // Count duplicated lines (lines that appear more than once)
+    let duplicatedLines = 0;
+    lineCounts.forEach((count, line) => {
+      if (count > 1) {
+        duplicatedLines += count - 1; // Count only the duplicates, not the original
+      }
+    });
+
+    return duplicatedLines;
+  }
+
   async analyzeRepo(repoPath: string): Promise<AnalysisResult> {
     const files = await this.findFiles(repoPath);
     const functions: FunctionAnalysis[] = [];
@@ -252,7 +267,7 @@ export class CodeAnalyzer {
         totalLines: fileAnalyses.reduce((sum, file) => sum + file.totalLines, 0),
         totalFunctions: functions.length,
         errorCount: 0,
-        functionsOver50Lines: functions.filter(f => f.size > 50).length,
+        functionsOver50Lines: functions.filter(f => f.size > this.LINES_THRESHOLD).length,
         functionsOverComplexity10: functions.filter(f => f.complexity > 10).length,
         averageComplexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
         averageDuplication: fileAnalyses.reduce((sum, file) => sum + file.duplicationPercentage, 0) / fileAnalyses.length || 0
@@ -289,43 +304,50 @@ export class CodeAnalyzer {
     return files;
   }
 
-  private async analyzeFile(filePath: string): Promise<FileAnalysis | null> {
+  public async analyzeFile(filePath: string): Promise<FileAnalysis | null> {
     try {
       const ast = await this.parseFile(filePath);
       if (!ast) return null;
 
       const fileContent = await fs.readFile(filePath, 'utf-8');
-      const lines = fileContent.split('\n').filter((line: string) => line.trim().length > 0).length;
+      const lines = fileContent.split('\n');
       const functions: FunctionMetrics[] = [];
 
       traverse(ast, {
         onFunction: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression) => {
           const analysis = this.analyzeFunction(node, filePath);
           if (analysis) {
+            const startLine = analysis.location.start?.line || 0;
+            const endLine = analysis.location.end?.line || 0;
+            const functionCode = lines.slice(startLine - 1, endLine).join('\n');
+            
             functions.push({
               name: analysis.name,
               lines: analysis.size,
-              startLine: analysis.location.start?.line || 0,
+              startLine: startLine,
               complexity: analysis.complexity,
               type: analysis.type as any,
-              hasWarning: analysis.size > 50 || analysis.complexity > 10
+              hasWarning: analysis.size > this.LINES_THRESHOLD || analysis.complexity > this.COMPLEXITY_THRESHOLD,
+              code: functionCode
             });
           }
         }
       });
 
       const stats = await fs.stat(filePath);
+      const totalLines = functions.reduce((sum, f) => sum + f.lines, 0);
+      const duplicatedLines = this.findDuplicatedCode(functions);
 
       return {
         path: filePath,
         name: path.basename(filePath),
         extension: path.extname(filePath),
-        totalLines: lines,
+        totalLines: lines.length,
         functions,
         functionsCount: functions.length,
         complexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
         maxComplexity: Math.max(...functions.map(f => f.complexity), 0),
-        duplicationPercentage: 0,
+        duplicationPercentage: totalLines > 0 ? (duplicatedLines / totalLines) * 100 : 0,
         warningCount: functions.filter(f => f.hasWarning).length,
         fileSize: stats.size
       };

@@ -204,7 +204,7 @@ function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; s
                         <th className="px-4 py-2 text-right">
                           <div className="flex items-center justify-end">
                             <SortButton field="duplication" label="Duplication" />
-                            <InfoButton info="Percentage of code that is duplicated across the repository" position="right" />
+                            <InfoButton info="Percentage of code repetition of the functions in the file" position="right" />
                           </div>
                         </th>
                         <th className="px-4 py-2 text-right">

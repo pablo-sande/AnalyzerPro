@@ -355,13 +355,12 @@ function parseFile(content) {
 // src/analyzer.ts
 var CodeAnalyzer = class {
   constructor() {
-    this.ARRAY_METHODS = ["map", "filter", "forEach", "find", "some", "every", "reduce"];
-    this.PROMISE_METHODS = ["then", "catch", "finally"];
-    this.REACT_HOOKS = ["useEffect", "useCallback", "useMemo", "useState", "useRef", "useContext"];
     this.COMPLEXITY_THRESHOLD = 10;
     this.LINES_THRESHOLD = 50;
-    this.DUPLICATION_THRESHOLD = 0.8;
-    this.CACHE_SIZE = 1e3;
+    this.SIMILARITY_THRESHOLD = 0.9;
+    // Lower threshold to catch more potential duplications
+    this.MIN_CODE_LENGTH = 20;
+    // Minimum characters to consider for duplication
     this.FUNCTION_TYPES = {
       METHOD: "method",
       PROMISE: "promise",
@@ -372,9 +371,6 @@ var CodeAnalyzer = class {
     };
     this.complexityCache = /* @__PURE__ */ new Map();
     this.MAX_CACHE_SIZE = 1e3;
-  }
-  clearCaches() {
-    this.complexityCache.clear();
   }
   generateCacheKey(node) {
     return `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}`;
@@ -497,6 +493,26 @@ var CodeAnalyzer = class {
     this.complexityCache.set(cacheKey, complexity);
     return complexity;
   }
+  normalizeCode(code) {
+    return code.replace(/<[^>]*>/g, "").replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "").replace(/\s+/g, " ").trim();
+  }
+  findDuplicatedCode(functions) {
+    const allLines = functions.flatMap((f) => {
+      if (!f.code) return [];
+      return f.code.split("\n").map((line) => this.normalizeCode(line)).filter((line) => line.length > 5);
+    });
+    const lineCounts = /* @__PURE__ */ new Map();
+    allLines.forEach((line) => {
+      lineCounts.set(line, (lineCounts.get(line) || 0) + 1);
+    });
+    let duplicatedLines = 0;
+    lineCounts.forEach((count, line) => {
+      if (count > 1) {
+        duplicatedLines += count - 1;
+      }
+    });
+    return duplicatedLines;
+  }
   async analyzeRepo(repoPath) {
     const files = await this.findFiles(repoPath);
     const functions = [];
@@ -531,7 +547,7 @@ var CodeAnalyzer = class {
         totalLines: fileAnalyses.reduce((sum, file) => sum + file.totalLines, 0),
         totalFunctions: functions.length,
         errorCount: 0,
-        functionsOver50Lines: functions.filter((f) => f.size > 50).length,
+        functionsOver50Lines: functions.filter((f) => f.size > this.LINES_THRESHOLD).length,
         functionsOverComplexity10: functions.filter((f) => f.complexity > 10).length,
         averageComplexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
         averageDuplication: fileAnalyses.reduce((sum, file) => sum + file.duplicationPercentage, 0) / fileAnalyses.length || 0
@@ -568,34 +584,40 @@ var CodeAnalyzer = class {
       const ast = await this.parseFile(filePath);
       if (!ast) return null;
       const fileContent = await fs.readFile(filePath, "utf-8");
-      const lines = fileContent.split("\n").filter((line) => line.trim().length > 0).length;
+      const lines = fileContent.split("\n");
       const functions = [];
       traverse(ast, {
         onFunction: (node) => {
           const analysis = this.analyzeFunction(node, filePath);
           if (analysis) {
+            const startLine = analysis.location.start?.line || 0;
+            const endLine = analysis.location.end?.line || 0;
+            const functionCode = lines.slice(startLine - 1, endLine).join("\n");
             functions.push({
               name: analysis.name,
               lines: analysis.size,
-              startLine: analysis.location.start?.line || 0,
+              startLine,
               complexity: analysis.complexity,
               type: analysis.type,
-              hasWarning: analysis.size > 50 || analysis.complexity > 10
+              hasWarning: analysis.size > this.LINES_THRESHOLD || analysis.complexity > this.COMPLEXITY_THRESHOLD,
+              code: functionCode
             });
           }
         }
       });
       const stats = await fs.stat(filePath);
+      const totalLines = functions.reduce((sum, f) => sum + f.lines, 0);
+      const duplicatedLines = this.findDuplicatedCode(functions);
       return {
         path: filePath,
         name: path.basename(filePath),
         extension: path.extname(filePath),
-        totalLines: lines,
+        totalLines: lines.length,
         functions,
         functionsCount: functions.length,
         complexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
         maxComplexity: Math.max(...functions.map((f) => f.complexity), 0),
-        duplicationPercentage: 0,
+        duplicationPercentage: totalLines > 0 ? duplicatedLines / totalLines * 100 : 0,
         warningCount: functions.filter((f) => f.hasWarning).length,
         fileSize: stats.size
       };

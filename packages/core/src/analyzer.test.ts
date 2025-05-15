@@ -31,7 +31,7 @@ describe('CodeAnalyzer', () => {
     tempFiles.forEach(removeTempFile);
   });
 
-  describe('parseFile', () => {
+  describe.only('analyzeFile', () => {
     it('should correctly identify function declarations', async () => {
       const content = `
         function testFunction() {
@@ -40,10 +40,11 @@ describe('CodeAnalyzer', () => {
       `;
       const filePath = createTempFile(content);
       tempFiles.push(filePath);
-      const result = await analyzer.parseFile(filePath);
-      expect(result.functions).toHaveLength(1);
-      expect(result.functions[0].name).toBe('testFunction');
-      expect(result.functions[0].lines).toBe(3);
+      const result = await analyzer.analyzeFile(filePath);
+      expect(result).not.toBeNull();
+      expect(result?.functions).toHaveLength(1);
+      expect(result?.functions[0].name).toBe('testFunction');
+      expect(result?.functions[0].lines).toBe(3);
     });
 
     it('should correctly identify arrow functions', async () => {
@@ -54,10 +55,11 @@ describe('CodeAnalyzer', () => {
       `;
       const filePath = createTempFile(content);
       tempFiles.push(filePath);
-      const result = await analyzer.parseFile(filePath);
-      expect(result.functions).toHaveLength(1);
-      expect(result.functions[0].name).toBe('testArrow');
-      expect(result.functions[0].lines).toBe(3);
+      const result = await analyzer.analyzeFile(filePath);
+      expect(result).not.toBeNull();
+      expect(result?.functions).toHaveLength(1);
+      expect(result?.functions[0].name).toBe('testArrow');
+      expect(result?.functions[0].lines).toBe(3);
     });
 
     it('should correctly identify anonymous functions', async () => {
@@ -68,10 +70,11 @@ describe('CodeAnalyzer', () => {
       `;
       const filePath = createTempFile(content);
       tempFiles.push(filePath);
-      const result = await analyzer.parseFile(filePath);
-      expect(result.functions).toHaveLength(1);
-      expect(result.functions[0].name).toBe('testAnonymous');
-      expect(result.functions[0].lines).toBe(3);
+      const result = await analyzer.analyzeFile(filePath);
+      expect(result).not.toBeNull();
+      expect(result?.functions).toHaveLength(1);
+      expect(result?.functions[0].name).toBe('testAnonymous');
+      expect(result?.functions[0].lines).toBe(3);
     });
 
     it('should correctly identify functions with high complexity', async () => {
@@ -88,9 +91,10 @@ describe('CodeAnalyzer', () => {
       `;
       const filePath = createTempFile(content);
       tempFiles.push(filePath);
-      const result = await analyzer.parseFile(filePath);
-      expect(result.functions).toHaveLength(1);
-      expect(result.functions[0].complexity).toBeGreaterThan(1);
+      const result = await analyzer.analyzeFile(filePath);
+      expect(result).not.toBeNull();
+      expect(result?.functions).toHaveLength(1);
+      expect(result?.functions[0].complexity).toBeGreaterThan(1);
     });
 
     it('should correctly identify functions with many lines', async () => {
@@ -106,12 +110,13 @@ describe('CodeAnalyzer', () => {
       `;
       const filePath = createTempFile(content);
       tempFiles.push(filePath);
-      const result = await analyzer.parseFile(filePath);
-      expect(result.functions).toHaveLength(1);
-      expect(result.functions[0].lines).toBe(8);
+      const result = await analyzer.analyzeFile(filePath);
+      expect(result).not.toBeNull();
+      expect(result?.functions).toHaveLength(1);
+      expect(result?.functions[0].lines).toBe(8);
     });
 
-    it.only('should correctly identify React hooks and callbacks', async () => {
+    it('should correctly identify React hooks and callbacks', async () => {
       const content = `
         const Component = () => {
           const [state, setState] = useState(() => {
@@ -131,23 +136,65 @@ describe('CodeAnalyzer', () => {
       `;
       const filePath = createTempFile(content);
       tempFiles.push(filePath);
-      const result = await analyzer.parseFile(filePath);
-      expect(result.functions.length).toBeGreaterThanOrEqual(3);
-      console.log('result.functions', result.functions);
-      expect(result.functions.some(f => f.name.includes('useState'))).toBe(true);
-      expect(result.functions.some(f => f.name.includes('useEffect'))).toBe(true);
-      expect(result.functions.some(f => f.name.includes('handleClick'))).toBe(true);
+      const result = await analyzer.analyzeFile(filePath);
+      expect(result).not.toBeNull();
+      expect(result?.functions.length).toBeGreaterThanOrEqual(3);
+      expect(result?.functions.some(f => f.name.includes('useState'))).toBe(true);
+      expect(result?.functions.some(f => f.name.includes('useEffect'))).toBe(true);
+      expect(result?.functions.some(f => f.name.includes('handleClick'))).toBe(true);
+    });
+
+    it.only('should detect duplicated code blocks', async () => {
+      const content = `
+        function duplicateFunction1() {
+          const result = [];
+          for (let i = 0; i < 10; i++) {
+            result.push(i * 2);
+          }
+          return result;
+        }
+
+        im a line
+        im a line
+        im a line
+        im a line
+        im a line
+        im a line
+        im a line
+        im a line
+
+        function duplicateFunction2() {
+          const result = [];
+          for (let i = 0; i < 10; i++) {
+            result.push(i * 2);
+          }
+          return result;
+        }
+
+        function differentFunction() {
+          return [1, 2, 3];
+        }
+      `;
+      const filePath = createTempFile(content);
+      tempFiles.push(filePath);
+      const result = await analyzer.analyzeFile(filePath);
+      console.log("_________________________ ", result)
+      expect(result).not.toBeNull();
+      expect(result?.functions).toHaveLength(3);
+      expect(result?.duplicationPercentage).toBeGreaterThan(0);
     });
   });
 
   describe('analyzeRepo', () => {
     it('should correctly analyze a repository', async () => {
-      // Mock the analyzeRepo method
       const mockResult = {
+        functions: [],
         files: [],
         summary: {
           totalFiles: 0,
           totalLines: 0,
+          totalFunctions: 0,
+          errorCount: 0,
           functionsOver50Lines: 0,
           functionsOverComplexity10: 0,
           averageComplexity: 0,

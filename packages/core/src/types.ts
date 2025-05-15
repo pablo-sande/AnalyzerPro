@@ -7,6 +7,7 @@ export interface FunctionMetrics {
   complexity: number;
   type: 'function' | 'method' | 'promise' | 'array' | 'hook' | 'callback';
   hasWarning: boolean;
+  code?: string; // Optional since we only need it for duplication detection
 }
 
 export interface FileAnalysis {
