@@ -53,6 +53,7 @@ export class CodeAnalyzer {
 
   private complexityCache = new Map<string, number>();
   private readonly MAX_CACHE_SIZE = 1000;
+  private repoRoot: string = '';
 
   private generateCacheKey(node: BabelNode): string {
     return `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}`;
@@ -244,6 +245,7 @@ export class CodeAnalyzer {
   }
 
   async analyzeRepo(repoPath: string): Promise<AnalysisResult> {
+    this.repoRoot = repoPath;
     const files = await this.findFiles(repoPath);
     const functions: FunctionAnalysis[] = [];
     const fileAnalyses: FileAnalysis[] = [];
@@ -350,8 +352,11 @@ export class CodeAnalyzer {
       const totalLines = functions.reduce((sum, f) => sum + f.lines, 0);
       const duplicatedLines = this.findDuplicatedCode(functions);
 
+      // Get the relative path from the repository root
+      const relativePath = path.relative(this.repoRoot, filePath);
+
       return {
-        path: filePath,
+        path: relativePath,
         name: path.basename(filePath),
         extension: path.extname(filePath),
         totalLines: lines.length,

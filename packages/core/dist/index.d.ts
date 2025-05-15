@@ -96,6 +96,7 @@ declare class CodeAnalyzer {
     private readonly FUNCTION_TYPES;
     private complexityCache;
     private readonly MAX_CACHE_SIZE;
+    private repoRoot;
     private generateCacheKey;
     private parseFile;
     private analyzeFunction;

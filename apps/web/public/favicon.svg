@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="16" cy="16" r="16" fill="#4F46E5"/>
+  
+  <!-- Code brackets -->
+  <path d="M12 8L8 16L12 24" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 8L24 16L20 24" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Analysis lines -->
+  <path d="M14 12H18" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <path d="M14 16H18" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <path d="M14 20H18" stroke="white" stroke-width="2" stroke-linecap="round"/>
+</svg> 

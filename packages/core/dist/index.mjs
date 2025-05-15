@@ -276,6 +276,7 @@ var CodeAnalyzer = class {
     };
     this.complexityCache = /* @__PURE__ */ new Map();
     this.MAX_CACHE_SIZE = 1e3;
+    this.repoRoot = "";
   }
   generateCacheKey(node) {
     return `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}`;
@@ -440,6 +441,7 @@ var CodeAnalyzer = class {
     return duplicatedLines;
   }
   async analyzeRepo(repoPath) {
+    this.repoRoot = repoPath;
     const files = await this.findFiles(repoPath);
     const functions = [];
     const fileAnalyses = [];
@@ -534,8 +536,9 @@ var CodeAnalyzer = class {
       const stats = await fs.stat(filePath);
       const totalLines = functions.reduce((sum, f) => sum + f.lines, 0);
       const duplicatedLines = this.findDuplicatedCode(functions);
+      const relativePath = path.relative(this.repoRoot, filePath);
       return {
-        path: filePath,
+        path: relativePath,
         name: path.basename(filePath),
         extension: path.extname(filePath),
         totalLines: lines.length,
