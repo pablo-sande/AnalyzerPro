@@ -5,8 +5,6 @@ export interface FunctionMetrics {
   lines: number;
   startLine: number;
   complexity: number;
-  fanIn: number;
-  fanOut: number;
   type: 'function' | 'method' | 'promise' | 'array' | 'hook' | 'callback';
   hasWarning: boolean;
 }
@@ -20,8 +18,6 @@ export interface FileAnalysis {
   functionsCount: number;
   complexity: number;
   maxComplexity: number;
-  averageFanIn: number;
-  averageFanOut: number;
   duplicationPercentage: number;
   warningCount: number;
   fileSize: number; // Size in bytes
@@ -32,8 +28,6 @@ export interface FunctionAnalysis {
   type: string;
   size: number;
   complexity: number;
-  fanIn: number;
-  fanOut: number;
   characteristics: string[];
   location: {
     file: string;

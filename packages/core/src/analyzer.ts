@@ -68,14 +68,10 @@ export class CodeAnalyzer {
   } as const;
 
   private complexityCache = new Map<string, number>();
-  private fanInCache = new Map<string, number>();
-  private fanOutCache = new Map<string, number>();
   private readonly MAX_CACHE_SIZE = 1000;
 
   private clearCaches() {
     this.complexityCache.clear();
-    this.fanInCache.clear();
-    this.fanOutCache.clear();
   }
 
   private generateCacheKey(node: BabelNode): string {
@@ -104,8 +100,6 @@ export class CodeAnalyzer {
     const functionName = (functionNode as any).id?.name || 'anonymous';
     const functionSize = this.calculateFunctionSize(functionNode);
     const complexity = this.calculateComplexity(functionNode);
-    const fanIn = this.calculateFanIn(functionNode, filePath);
-    const fanOut = this.calculateFanOut(functionNode, filePath);
 
     // Analyze function characteristics
     const characteristics = this.analyzeFunctionCharacteristics(functionNode);
@@ -115,8 +109,6 @@ export class CodeAnalyzer {
       type: this.determineFunctionType(functionNode),
       size: functionSize,
       complexity,
-      fanIn,
-      fanOut,
       characteristics,
       location: {
         file: filePath,
@@ -224,54 +216,6 @@ export class CodeAnalyzer {
     return complexity;
   }
 
-  private calculateFanIn(node: BabelNode, filePath: string): number {
-    const cacheKey = this.generateCacheKey(node);
-    if (this.fanInCache.has(cacheKey)) {
-      return this.fanInCache.get(cacheKey)!;
-    }
-
-    let fanIn = 0;
-    const functionName = (node as any).id?.name;
-
-    if (functionName) {
-      traverse(node, {
-        onControlFlow: (node: BabelNode) => {
-          if (node.type === 'Identifier' && (node as Identifier).name === functionName) {
-            fanIn++;
-          }
-        }
-      });
-    }
-
-    if (this.fanInCache.size >= this.MAX_CACHE_SIZE) {
-      this.fanInCache.clear();
-    }
-    this.fanInCache.set(cacheKey, fanIn);
-    return fanIn;
-  }
-
-  private calculateFanOut(node: BabelNode, filePath: string): number {
-    const cacheKey = this.generateCacheKey(node);
-    if (this.fanOutCache.has(cacheKey)) {
-      return this.fanOutCache.get(cacheKey)!;
-    }
-
-    let fanOut = 0;
-    traverse(node, {
-      onControlFlow: (node: BabelNode) => {
-        if (node.type === 'CallExpression') {
-          fanOut++;
-        }
-      }
-    });
-
-    if (this.fanOutCache.size >= this.MAX_CACHE_SIZE) {
-      this.fanOutCache.clear();
-    }
-    this.fanOutCache.set(cacheKey, fanOut);
-    return fanOut;
-  }
-
   async analyzeRepo(repoPath: string): Promise<AnalysisResult> {
     const files = await this.findFiles(repoPath);
     const functions: FunctionAnalysis[] = [];
@@ -287,8 +231,6 @@ export class CodeAnalyzer {
             type: f.type,
             size: f.lines,
             complexity: f.complexity,
-            fanIn: f.fanIn,
-            fanOut: f.fanOut,
             characteristics: [],
             location: {
               file: fileAnalysis.path,
@@ -365,8 +307,6 @@ export class CodeAnalyzer {
               lines: analysis.size,
               startLine: analysis.location.start?.line || 0,
               complexity: analysis.complexity,
-              fanIn: analysis.fanIn,
-              fanOut: analysis.fanOut,
               type: analysis.type as any,
               hasWarning: analysis.size > 50 || analysis.complexity > 10
             });
@@ -385,9 +325,7 @@ export class CodeAnalyzer {
         functionsCount: functions.length,
         complexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
         maxComplexity: Math.max(...functions.map(f => f.complexity), 0),
-        averageFanIn: functions.reduce((sum, f) => sum + f.fanIn, 0) / functions.length || 0,
-        averageFanOut: functions.reduce((sum, f) => sum + f.fanOut, 0) / functions.length || 0,
-        duplicationPercentage: functions.filter(f => f.fanIn > 1).length / functions.length * 100 || 0,
+        duplicationPercentage: 0,
         warningCount: functions.filter(f => f.hasWarning).length,
         fileSize: stats.size
       };

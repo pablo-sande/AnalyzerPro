@@ -15,8 +15,6 @@ const mockFile: FileAnalysisType = {
       lines: 10,
       startLine: 1,
       complexity: 2,
-      fanIn: 1,
-      fanOut: 2,
       type: 'function',
       hasWarning: false
     }
@@ -24,8 +22,6 @@ const mockFile: FileAnalysisType = {
   functionsCount: 1,
   complexity: 2,
   maxComplexity: 2,
-  averageFanIn: 1,
-  averageFanOut: 2,
   duplicationPercentage: 0.1,
   warningCount: 0,
   fileSize: 1024

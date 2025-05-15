@@ -371,14 +371,10 @@ var CodeAnalyzer = class {
       FUNCTION: "function"
     };
     this.complexityCache = /* @__PURE__ */ new Map();
-    this.fanInCache = /* @__PURE__ */ new Map();
-    this.fanOutCache = /* @__PURE__ */ new Map();
     this.MAX_CACHE_SIZE = 1e3;
   }
   clearCaches() {
     this.complexityCache.clear();
-    this.fanInCache.clear();
-    this.fanOutCache.clear();
   }
   generateCacheKey(node) {
     return `${node.type}-${node.loc?.start.line}-${node.loc?.start.column}`;
@@ -401,16 +397,12 @@ var CodeAnalyzer = class {
     const functionName = functionNode.id?.name || "anonymous";
     const functionSize = this.calculateFunctionSize(functionNode);
     const complexity = this.calculateComplexity(functionNode);
-    const fanIn = this.calculateFanIn(functionNode, filePath);
-    const fanOut = this.calculateFanOut(functionNode, filePath);
     const characteristics = this.analyzeFunctionCharacteristics(functionNode);
     return {
       name: functionName,
       type: this.determineFunctionType(functionNode),
       size: functionSize,
       complexity,
-      fanIn,
-      fanOut,
       characteristics,
       location: {
         file: filePath,
@@ -505,47 +497,6 @@ var CodeAnalyzer = class {
     this.complexityCache.set(cacheKey, complexity);
     return complexity;
   }
-  calculateFanIn(node, filePath) {
-    const cacheKey = this.generateCacheKey(node);
-    if (this.fanInCache.has(cacheKey)) {
-      return this.fanInCache.get(cacheKey);
-    }
-    let fanIn = 0;
-    const functionName = node.id?.name;
-    if (functionName) {
-      traverse(node, {
-        onControlFlow: (node2) => {
-          if (node2.type === "Identifier" && node2.name === functionName) {
-            fanIn++;
-          }
-        }
-      });
-    }
-    if (this.fanInCache.size >= this.MAX_CACHE_SIZE) {
-      this.fanInCache.clear();
-    }
-    this.fanInCache.set(cacheKey, fanIn);
-    return fanIn;
-  }
-  calculateFanOut(node, filePath) {
-    const cacheKey = this.generateCacheKey(node);
-    if (this.fanOutCache.has(cacheKey)) {
-      return this.fanOutCache.get(cacheKey);
-    }
-    let fanOut = 0;
-    traverse(node, {
-      onControlFlow: (node2) => {
-        if (node2.type === "CallExpression") {
-          fanOut++;
-        }
-      }
-    });
-    if (this.fanOutCache.size >= this.MAX_CACHE_SIZE) {
-      this.fanOutCache.clear();
-    }
-    this.fanOutCache.set(cacheKey, fanOut);
-    return fanOut;
-  }
   async analyzeRepo(repoPath) {
     const files = await this.findFiles(repoPath);
     const functions = [];
@@ -560,8 +511,6 @@ var CodeAnalyzer = class {
             type: f.type,
             size: f.lines,
             complexity: f.complexity,
-            fanIn: f.fanIn,
-            fanOut: f.fanOut,
             characteristics: [],
             location: {
               file: fileAnalysis.path,
@@ -630,8 +579,6 @@ var CodeAnalyzer = class {
               lines: analysis.size,
               startLine: analysis.location.start?.line || 0,
               complexity: analysis.complexity,
-              fanIn: analysis.fanIn,
-              fanOut: analysis.fanOut,
               type: analysis.type,
               hasWarning: analysis.size > 50 || analysis.complexity > 10
             });
@@ -648,9 +595,7 @@ var CodeAnalyzer = class {
         functionsCount: functions.length,
         complexity: functions.reduce((sum, f) => sum + f.complexity, 0) / functions.length || 0,
         maxComplexity: Math.max(...functions.map((f) => f.complexity), 0),
-        averageFanIn: functions.reduce((sum, f) => sum + f.fanIn, 0) / functions.length || 0,
-        averageFanOut: functions.reduce((sum, f) => sum + f.fanOut, 0) / functions.length || 0,
-        duplicationPercentage: functions.filter((f) => f.fanIn > 1).length / functions.length * 100 || 0,
+        duplicationPercentage: 0,
         warningCount: functions.filter((f) => f.hasWarning).length,
         fileSize: stats.size
       };

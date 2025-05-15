@@ -7,8 +7,6 @@ interface FunctionMetrics {
     lines: number;
     startLine: number;
     complexity: number;
-    fanIn: number;
-    fanOut: number;
     type: 'function' | 'method' | 'promise' | 'array' | 'hook' | 'callback';
     hasWarning: boolean;
 }
@@ -21,8 +19,6 @@ interface FileAnalysis {
     functionsCount: number;
     complexity: number;
     maxComplexity: number;
-    averageFanIn: number;
-    averageFanOut: number;
     duplicationPercentage: number;
     warningCount: number;
     fileSize: number;
@@ -32,8 +28,6 @@ interface FunctionAnalysis {
     type: string;
     size: number;
     complexity: number;
-    fanIn: number;
-    fanOut: number;
     characteristics: string[];
     location: {
         file: string;
@@ -86,8 +80,6 @@ declare class CodeAnalyzer {
     private readonly CACHE_SIZE;
     private readonly FUNCTION_TYPES;
     private complexityCache;
-    private fanInCache;
-    private fanOutCache;
     private readonly MAX_CACHE_SIZE;
     private clearCaches;
     private generateCacheKey;
@@ -98,8 +90,6 @@ declare class CodeAnalyzer {
     private determineFunctionType;
     private calculateFunctionSize;
     private calculateComplexity;
-    private calculateFanIn;
-    private calculateFanOut;
     analyzeRepo(repoPath: string): Promise<AnalysisResult>;
     private findFiles;
     private analyzeFile;

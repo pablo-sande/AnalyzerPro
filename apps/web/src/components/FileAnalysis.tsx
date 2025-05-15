@@ -66,8 +66,6 @@ export function FileAnalysis({ file }: FileAnalysisProps) {
                     <th className="px-4 py-2 text-right">Line</th>
                     <th className="px-4 py-2 text-right">Complexity</th>
                     <th className="px-4 py-2 text-right">Lines</th>
-                    <th className="px-4 py-2 text-right">Fan In</th>
-                    <th className="px-4 py-2 text-right">Fan Out</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -84,8 +82,6 @@ export function FileAnalysis({ file }: FileAnalysisProps) {
                       <td className={`px-4 py-2 text-right ${func.lines > 50 ? 'text-red-500' : ''}`}>
                         {func.lines}
                       </td>
-                      <td className="px-4 py-2 text-right">{func.fanIn}</td>
-                      <td className="px-4 py-2 text-right">{func.fanOut}</td>
                     </tr>
                   ))}
                 </tbody>
