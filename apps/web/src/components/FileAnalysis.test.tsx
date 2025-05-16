@@ -16,7 +16,8 @@ const mockFile: FileAnalysisType = {
       startLine: 1,
       lines: 10,
       complexity: 2,
-      hasWarning: false
+      hasWarning: false,
+      code: ''
     }
   ],
   functionsCount: 1,
@@ -75,7 +76,8 @@ describe('FileAnalysis', () => {
       functions: [
         {
           ...mockFile.functions[0],
-          complexity: 10
+          complexity: 10,
+          code: ''
         }
       ]
     };
@@ -93,7 +95,8 @@ describe('FileAnalysis', () => {
       functions: [
         {
           ...mockFile.functions[0],
-          lines: 51
+          lines: 51,
+          code: ''
         }
       ]
     };

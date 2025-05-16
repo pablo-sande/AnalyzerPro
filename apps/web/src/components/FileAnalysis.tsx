@@ -7,37 +7,41 @@ import { SortButton } from '@/components/SortButton';
 import { InfoField } from '@/components/InfoField';
 import { BackButton } from '@/components/BackButton';
 
+type SortState = {
+  field: SortField;
+  order: SortDirection;
+};
+
 export interface FileAnalysisProps {
   file: FileAnalysisType;
   mainSortField?: string;
   mainSortOrder?: string;
 }
 
-const FileInfo = ({ file }: { file: FileAnalysisType }) => (
-  <div className="p-4 bg-white rounded-lg shadow">
-    <h2 className="text-xl font-semibold mb-4">File Information</h2>
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-      {fileInfoFields.map(({ label, value, className }) => {
-        let computedClassName: string | undefined = className;
-        if (label === 'Max Complexity' && file.maxComplexity > 10) {
-          computedClassName = 'text-red-500';
-        } else if (label === 'Duplication' && file.duplicationPercentage > 20) {
-          computedClassName = 'text-yellow-500';
-        } else if (label === 'Warnings' && file.warningCount > 0) {
-          computedClassName = 'text-red-500';
-        }
-        return (
+const FileInfo = ({ file }: { file: FileAnalysisType }) => {
+  const getFieldClassName = (label: string, file: FileAnalysisType): string | undefined => {
+    if (label === 'Max Complexity' && file.maxComplexity > 10) return 'text-red-500';
+    if (label === 'Duplication' && file.duplicationPercentage > 20) return 'text-yellow-500';
+    if (label === 'Warnings' && file.warningCount > 0) return 'text-red-500';
+    return undefined;
+  };
+
+  return (
+    <div className="p-4 bg-white rounded-lg shadow">
+      <h2 className="text-xl font-semibold mb-4">File Information</h2>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {fileInfoFields.map(({ label, value, className }) => (
           <InfoField
             key={label}
             label={label}
             value={value(file)}
-            className={computedClassName}
+            className={getFieldClassName(label, file) || className}
           />
-        );
-      })}
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const FunctionTypeDistribution = ({ functions }: { functions: FileAnalysisType['functions'] }) => {
   const typeCounts = functions.reduce((acc, func) => {
@@ -69,7 +73,7 @@ const FunctionsTable = ({
   onSort 
 }: { 
   functions: FileAnalysisType['functions']; 
-  sort: { field: SortField; order: SortDirection };
+  sort: SortState;
   onSort: (field: SortField) => void;
 }) => (
   <div className="p-4 bg-white rounded-lg shadow">
@@ -91,9 +95,7 @@ const FunctionsTable = ({
         <tbody>
           {functions.map((func, idx) => (
             <tr key={func.name + '-' + idx} className="border-t">
-              <td className="px-4 py-2 font-mono text-sm">
-                {func.name}
-              </td>
+              <td className="px-4 py-2 font-mono text-sm">{func.name}</td>
               <td className="px-4 py-2">
                 <span className={`font-medium ${functionTypeColors[func.type]}`}>
                   {func.type}
@@ -117,11 +119,10 @@ const FunctionsTable = ({
 export function FileAnalysis({ file }: FileAnalysisProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [sort, setSort] = useState<{ field: SortField; order: SortDirection }>(() => {
-    const field = searchParams.get('sortField') as SortField || 'startLine';
-    const order = searchParams.get('sortOrder') as SortDirection || 'asc';
-    return { field, order };
-  });
+  const [sort, setSort] = useState<SortState>(() => ({
+    field: (searchParams.get('sortField') as SortField) || 'startLine',
+    order: (searchParams.get('sortOrder') as SortDirection) || 'asc'
+  }));
 
   useEffect(() => {
     setSearchParams(prev => {

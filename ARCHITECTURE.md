@@ -57,9 +57,9 @@ apps/web/
 │   ├── App.test.tsx  # Application tests
 │   ├── api.ts        # API integration
 │   ├── main.tsx      # Application entry point
-│   └── index.css     # Global styles
+│   ├── index.css     # Global styles
+│   └── index.html    # HTML entry point
 ├── public/           # Static assets
-├── index.html        # HTML entry point
 ├── package.json      # Dependencies and scripts
 ├── vite.config.ts    # Vite configuration
 ├── vitest.config.ts  # Test configuration
@@ -125,27 +125,33 @@ apps/cli/
 The heart of the analysis system, providing fundamental code analysis capabilities.
 
 Key components:
-- `CodeAnalyzer` class for code analysis
-- AST traversal system
-- Function analysis
-- Code duplication detection
+- `RepositoryAnalyzer` class for repository-level analysis
+- `FunctionAnalyzer` class for function-level analysis
+- `DuplicationDetector` class for code duplication detection
+- `ASTTraverser` class for AST traversal
+- `ContextualNamingSystem` for managing function context
 - Metrics calculation
 
 ```typescript
 // Core package structure
 packages/core/
 ├── src/
-│   ├── analyzer.ts    # Main analyzer class
-│   ├── analyzer.test.ts # Analyzer tests
-│   ├── traverser.ts   # AST traversal logic
-│   ├── traverser.test.ts # Traverser tests
-│   ├── types.ts       # Type definitions
-│   ├── types/         # Additional type definitions
-│   └── index.ts       # Package entry point
-├── package.json       # Dependencies and scripts
-├── tsup.config.ts     # Build configuration
-├── tsconfig.json      # TypeScript configuration
-└── vitest.config.ts   # Test configuration
+│   ├── repository-analyzer.ts    # Repository analysis logic
+│   ├── function-analyzer.ts      # Function analysis logic
+│   ├── duplication-detector.ts   # Code duplication detection
+│   ├── traverser.ts             # AST traversal logic
+│   ├── contextual-naming-system.ts # Function context management
+│   ├── parent-info.ts           # Parent node information utilities
+│   ├── types.ts                 # Core type definitions
+│   ├── types/                   # Additional type definitions
+│   ├── analyzer.ts              # Main analyzer exports
+│   ├── analyzer.test.ts         # Analyzer tests
+│   ├── traverser.test.ts        # Traverser tests
+│   └── index.ts                 # Package entry point
+├── package.json                 # Dependencies and scripts
+├── tsup.config.ts              # Build configuration
+├── tsconfig.json               # TypeScript configuration
+└── vitest.config.ts            # Test configuration
 ```
 
 ### 2. Shared Configurations

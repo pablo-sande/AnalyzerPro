@@ -34,7 +34,7 @@ function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; s
   const handleAnalyze = async () => {
     if (!url) return;
     
-    // Validar que la URL sea de GitHub
+    // Validate that the URL is a GitHub repository
     const githubUrlPattern = /^https:\/\/github\.com\/[\w-]+\/[\w-]+$/;
     if (!githubUrlPattern.test(url)) {
       setError('Please enter a valid GitHub repository URL');

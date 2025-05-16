@@ -1,4 +1,9 @@
-import { FunctionDeclaration, ArrowFunctionExpression, FunctionExpression, Node } from '@babel/types';
+import type { 
+  Node as BabelNode, 
+  FunctionDeclaration, 
+  ArrowFunctionExpression,
+  FunctionExpression
+} from '@babel/types';
 
 export interface FunctionMetrics {
   name: string;
@@ -7,7 +12,7 @@ export interface FunctionMetrics {
   complexity: number;
   type: 'function' | 'arrow' | 'promise' | 'array' | 'hook' | 'callback';
   hasWarning: boolean;
-  code?: string; // Optional since we only need it for duplication detection
+  code: string;
 }
 
 export interface FileAnalysis {
@@ -52,18 +57,28 @@ export interface AnalysisResult {
   };
 }
 
+export interface FunctionContext {
+  type: string;
+  objectName?: string;
+  method?: string;
+  location?: {
+    file: string;
+    start?: { line: number; column: number };
+    end?: { line: number; column: number };
+  };
+}
+
 export interface NodeInfo {
-  node: Node;
+  type: string;
   parent?: {
     type: string;
-    key?: string;
-    value?: string;
+    name?: string;
+    objectName?: string;
     method?: string;
-    isOptional?: boolean;
   };
 }
 
 export interface TraverseOptions {
-  onFunction?: (node: FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parent?: NodeInfo['parent']) => void;
-  onControlFlow?: (node: Node) => void;
+  onFunction?: (node: BabelNode, parent?: NodeInfo['parent']) => void;
+  onControlFlow?: (node: BabelNode) => void;
 } 

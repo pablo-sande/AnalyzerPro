@@ -7,25 +7,25 @@ The core package (`packages/core`) is the heart of the code analysis system. It 
 
 The analysis process follows this sequence:
 
-1. **Repository Analysis** (`analyzer.ts:13-67`)
+1. **Repository Analysis** (`src/repository-analyzer.ts`)
    - Initialize the analyzer with repository path
    - Discover all relevant files using DFS
    - Process files in batches to manage memory
    - Aggregate results into a final analysis
 
-2. **File Analysis** (`analyzer.ts:69-142`)
+2. **File Analysis** (`src/repository-analyzer.ts`)
    - Parse file into AST using Babel
    - Extract function information
    - Calculate metrics for each function
    - Generate file-level statistics
 
-3. **Function Analysis** (`analyzer.ts:144-196`)
+3. **Function Analysis** (`src/function-analyzer.ts`)
    - Analyze individual functions
    - Calculate complexity metrics
    - Detect function characteristics
    - Map function locations
 
-4. **Result Aggregation** (`analyzer.ts:13-67`)
+4. **Result Aggregation** (`src/repository-analyzer.ts`)
    - Combine all file analyses
    - Calculate repository-wide metrics
    - Generate summary statistics
@@ -35,99 +35,59 @@ The analysis process follows this sequence:
 
 ### Main Components
 
-1. **CodeAnalyzer Class** (`analyzer.ts`)
+1. **RepositoryAnalyzer Class** (`src/repository-analyzer.ts`)
    - The primary class that orchestrates the entire analysis process
    - Handles file discovery, parsing, and metric calculation
    - Implements performance optimizations through batch processing
 
-2. **Type System** (`types.ts`)
+2. **FunctionAnalyzer Class** (`src/function-analyzer.ts`)
+   - Analyzes individual functions
+   - Calculates complexity metrics
+   - Detects function characteristics
+   - Implements thresholds for warnings (50 lines, complexity > 10)
+
+3. **DuplicationDetector Class** (`src/duplication-detector.ts`)
+   - Detects code duplication
+   - Calculates duplication metrics
+   - Manages similarity analysis
+
+4. **Type System** (`src/types.ts` and `src/types/`)
    - Defines the core data structures used throughout the analysis
    - Ensures type safety and clear interfaces between components
 
-3. **Traverser** (`traverser.js`)
-   - Handles AST (Abstract Syntax Tree) traversal
-   - Provides callbacks for different node types
-   - Enables efficient code structure analysis
-
-## Data Structures
-
-### Core Types
-
-1. **FileAnalysis** (`types.ts:11-24`)
-```typescript
-interface FileAnalysis {
-  path: string;              // Relative path to the file
-  name: string;              // Filename
-  extension: string;         // File extension
-  totalLines: number;        // Total lines in file
-  functions: FunctionMetrics[]; // Functions found in file
-  functionsCount: number;    // Number of functions
-  complexity: number;        // Average complexity
-  maxComplexity: number;     // Highest complexity found
-  duplicationPercentage: number; // Code duplication percentage
-  warningCount: number;      // Number of warnings
-  fileSize: number;          // File size in bytes
-}
-```
-
-2. **FunctionAnalysis** (`types.ts:26-39`)
-```typescript
-interface FunctionAnalysis {
-  name: string;              // Function name
-  type: FunctionMetrics['type']; // Function type
-  size: number;              // Function size in lines
-  complexity: number;        // Cyclomatic complexity
-  characteristics: string[]; // Function characteristics
-  location: {                // Location in source
-    file: string;
-    start?: { line: number; column: number };
-    end?: { line: number; column: number };
-  };
-}
-```
-
-3. **AnalysisResult** (`types.ts:41-53`)
-```typescript
-interface AnalysisResult {
-  functions: FunctionAnalysis[];  // All functions found
-  files: FileAnalysis[];         // All files analyzed
-  summary: {
-    totalFiles: number;          // Total files analyzed
-    totalLines: number;          // Total lines of code
-    totalFunctions: number;      // Total functions found
-    errorCount: number;          // Number of errors
-    functionsOver50Lines: number; // Functions exceeding line threshold
-    functionsOverComplexity10: number; // Functions exceeding complexity threshold
-    averageComplexity: number;   // Average function complexity
-    averageDuplication: number;  // Average code duplication
-  };
-}
-```
+5. **AST Traversal** (`src/traverser.ts`)
+   - Provides the main `traverse` function for AST traversal
+   - Handles function detection and naming
+   - Manages control flow analysis
+   - Integrates with `ContextualNamingSystem` for function context
+   - Includes `parseFile` function for Babel parsing with comprehensive plugin support
 
 ## Key Algorithms
 
-### 1. File Discovery Algorithm (`analyzer.ts:198-236`)
+### 1. File Discovery Algorithm (`src/repository-analyzer.ts:124-162`)
 ```typescript
 private async findFiles(repoPath: string): Promise<string[]> {
   const files: string[] = [];
   const processDirectory = async (dirPath: string) => {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
       
-      if (entry.isDirectory()) {
-        // Skip hidden directories and node_modules
-        if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
-          await processDirectory(fullPath);
-        }
-      } else if (entry.isFile()) {
-        // Only process JavaScript/TypeScript files
-        const ext = path.extname(entry.name).toLowerCase();
-        if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
-          files.push(fullPath);
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        
+        if (entry.isDirectory()) {
+          if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
+            await processDirectory(fullPath);
+          }
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+            files.push(fullPath);
+          }
         }
       }
+    } catch (error) {
+      console.error(`Error processing directory ${dirPath}:`, error);
     }
   };
 
@@ -135,6 +95,7 @@ private async findFiles(repoPath: string): Promise<string[]> {
   return files;
 }
 ```
+
 This algorithm uses a recursive Depth-First Search (DFS) to traverse the directory structure:
 - Time Complexity: O(n) where n is the total number of files and directories
 - Space Complexity: O(d) where d is the maximum directory depth
@@ -143,31 +104,43 @@ This algorithm uses a recursive Depth-First Search (DFS) to traverse the directo
   - Only processes relevant file extensions
   - Uses async/await for non-blocking I/O
 
-### 2. AST Traversal System (`traverser.ts`)
+### 2. AST Traversal System (`src/traverser.ts:1-162`)
 ```typescript
 export function traverse(node: BabelNode, options: TraverseOptions, parent?: BabelNode) {
   if (!node) return;
 
-  // Skip simple literals
-  if (node.type === 'StringLiteral' || 
-      node.type === 'NumericLiteral' || 
-      node.type === 'BooleanLiteral' ||
-      node.type === 'NullLiteral' ||
-      node.type === 'RegExpLiteral') {
+  const namingSystem = new ContextualNamingSystem();
+
+  // Skip literals and other simple nodes
+  if (NODE_TYPES_TO_SKIP.includes(node.type)) {
     return;
   }
 
-  // Process functions
-  if (options.onFunction && (
-    node.type === 'FunctionDeclaration' ||
-    node.type === 'ArrowFunctionExpression' ||
-    node.type === 'FunctionExpression'
-  )) {
+  // Handle functions
+  if (options.onFunction && FUNCTION_TYPES.includes(node.type)) {
     const parentInfo = getParentInfo(parent);
-    options.onFunction(node, parentInfo);
+    const context = namingSystem.extractContextFromNode(parent as BabelNode);
+    
+    if (context) {
+      namingSystem.pushContext(context);
+    }
+
+    let functionName = 'anonymous';
+    // ... function name resolution logic ...
+
+    options.onFunction(node as FunctionDeclaration | ArrowFunctionExpression | FunctionExpression, parentInfo);
+
+    if (context) {
+      namingSystem.popContext();
+    }
   }
 
-  // Recursive DFS traversal
+  // Handle control flow
+  if (options.onControlFlow && CONTROL_FLOW_TYPES.includes(node.type)) {
+    options.onControlFlow(node);
+  }
+
+  // Recursive traversal
   Object.keys(node).forEach(key => {
     const value = (node as any)[key];
     if (value && typeof value === 'object') {
@@ -254,44 +227,51 @@ Key optimizations:
 - Pattern-based node processing
 - Stack-based context management
 
-### 3. Function Analysis Algorithm (`analyzer.ts:144-196`)
+### 3. Function Analysis Algorithm (`src/function-analyzer.ts:1-86`)
 ```typescript
-private analyzeFunction(node: BabelNode, filePath: string): FunctionAnalysis | null {
-  // Validate node type
-  if (!['FunctionDeclaration', 'ArrowFunctionExpression', 'FunctionExpression'].includes(node.type)) {
-    return null;
-  }
+export class FunctionAnalyzer {
+  private readonly COMPLEXITY_THRESHOLD = 10;
+  private readonly LINES_THRESHOLD = 50;
 
-  const functionNode = node as FunctionDeclaration | ArrowFunctionExpression | FunctionExpression;
-  const functionName = (functionNode as any).id?.name || 'anonymous';
-  const functionSize = this.calculateFunctionSize(functionNode);
-  
-  // Calculate cyclomatic complexity
-  let complexity = 1; // Base complexity
-  traverse(functionNode, {
-    onControlFlow: (node: BabelNode) => {
-      if (['IfStatement', 'SwitchCase', 'ForStatement', 'WhileStatement', 
-           'DoWhileStatement', 'CatchClause', 'ConditionalExpression',
-           'ForInStatement', 'ForOfStatement', 'LogicalExpression'].includes(node.type)) {
-        complexity++;
+  public analyzeFunction(node: BabelNode, filePath: string): FunctionAnalysis | null {
+    if (!node || !('type' in node)) return null;
+
+    if (!['FunctionDeclaration', 'ArrowFunctionExpression', 'FunctionExpression'].includes(node.type)) {
+      return null;
+    }
+
+    const functionNode = node as FunctionDeclaration | ArrowFunctionExpression | FunctionExpression;
+    const functionName = (functionNode as any).id?.name || 'anonymous';
+    const functionSize = this.calculateFunctionSize(functionNode);
+    
+    // Calculate complexity
+    let complexity = 1;
+    traverse(functionNode, {
+      onControlFlow: (node: BabelNode) => {
+        if (['IfStatement', 'SwitchCase', 'ForStatement', 'WhileStatement', 
+             'DoWhileStatement', 'CatchClause', 'ConditionalExpression',
+             'ForInStatement', 'ForOfStatement', 'LogicalExpression'].includes(node.type)) {
+          complexity++;
+        }
       }
-    }
-  });
+    });
 
-  return {
-    name: functionName,
-    type: this.determineFunctionType(functionNode),
-    size: functionSize,
-    complexity,
-    characteristics: this.analyzeFunctionCharacteristics(functionNode),
-    location: {
-      file: filePath,
-      start: functionNode.loc?.start,
-      end: functionNode.loc?.end
-    }
-  };
+    return {
+      name: functionName,
+      type: this.determineFunctionType(functionNode),
+      size: functionSize,
+      complexity,
+      characteristics: this.analyzeFunctionCharacteristics(functionNode),
+      location: {
+        file: filePath,
+        start: functionNode.loc?.start,
+        end: functionNode.loc?.end
+      }
+    };
+  }
 }
 ```
+
 This algorithm uses a single-pass AST traversal to analyze functions:
 - Time Complexity: O(n) where n is the number of nodes in the function's AST
 - Space Complexity: O(1) as it only stores metrics
@@ -300,93 +280,25 @@ This algorithm uses a single-pass AST traversal to analyze functions:
   - Single-pass traversal for multiple metrics
   - Efficient node type checking
 
-### 4. Code Duplication Detection (`analyzer.ts:219-236`)
+### 4. Code Duplication Detection (`src/duplication-detector.ts:1-202`)
 ```typescript
-private findDuplicatedCode(functions: FunctionMetrics[], totalFileLines: number): number {
-  const codeMap = new Map<string, { count: number, lines: number, indexes: number[][], level: number }>();
-  const SIMILARITY_THRESHOLD = 0.8;
-  const MAX_CODE_LENGTH = 1000;
-  const duplicatedLineFlags = new Array(totalFileLines).fill(false);
+export class DuplicationDetector {
+  private readonly SIMILARITY_THRESHOLD = 0.8;
+  private readonly MAX_CODE_LENGTH = 1000;
 
-  // Sort functions by level (outermost first)
-  const sortedFunctions = [...functions].sort((a, b) => {
-    if (a.startLine <= b.startLine && a.startLine + a.lines >= b.startLine + b.lines) return -1;
-    if (b.startLine <= a.startLine && b.startLine + b.lines >= a.startLine + a.lines) return 1;
-    return a.startLine - b.startLine;
-  });
+  public findDuplicatedCode(functions: FunctionMetrics[], totalFileLines: number): number {
+    const codeMap = new Map<string, { count: number, lines: number, indexes: number[][], level: number }>();
+    const duplicatedLineFlags = new Array(totalFileLines).fill(false);
 
-  // Group functions by nesting level
-  const levelGroups = new Map<number, FunctionMetrics[]>();
-  for (const func of sortedFunctions) {
-    let level = 0;
-    for (const otherFunc of sortedFunctions) {
-      if (otherFunc === func) break;
-      if (otherFunc.startLine <= func.startLine && 
-          otherFunc.startLine + otherFunc.lines >= func.startLine + func.lines) {
-        level++;
-      }
-    }
-    if (!levelGroups.has(level)) {
-      levelGroups.set(level, []);
-    }
-    levelGroups.get(level)!.push(func);
+    // Sort functions by level (outermost first)
+    const sortedFunctions = [...functions].sort((a, b) => {
+      if (a.startLine <= b.startLine && a.startLine + a.lines >= b.startLine + b.lines) return -1;
+      if (b.startLine <= a.startLine && b.startLine + b.lines >= a.startLine + a.lines) return 1;
+      return a.startLine - b.startLine;
+    });
+
+    // ... rest of the implementation ...
   }
-
-  // Process each level group
-  for (const [level, groupFuncs] of levelGroups) {
-    for (const func of groupFuncs) {
-      const functionBody = this.extractFunctionBody(func.code!);
-      if (!functionBody) continue;
-      const normalizedCode = this.normalizeCode(functionBody).slice(0, MAX_CODE_LENGTH);
-      const fingerprint = this.generateFingerprint(normalizedCode);
-
-      // Check for exact matches at the same level
-      const existing = codeMap.get(fingerprint);
-      if (existing && existing.level === level) {
-        existing.count += 1;
-        existing.indexes.push([func.startLine - 1, func.startLine - 1 + func.lines - 1]);
-        continue;
-      }
-
-      // Look for similar code at the same level
-      let foundSimilar = false;
-      for (const [existingFingerprint, existing] of codeMap) {
-        if (existing.level === level && this.areFingerprintsSimilar(fingerprint, existingFingerprint)) {
-          const similarity = this.calculateSimilarityOptimized(normalizedCode, existingFingerprint);
-          if (similarity >= SIMILARITY_THRESHOLD) {
-            existing.count += 1;
-            existing.indexes.push([func.startLine - 1, func.startLine - 1 + func.lines - 1]);
-            foundSimilar = true;
-            break;
-          }
-        }
-      }
-
-      if (!foundSimilar) {
-        codeMap.set(fingerprint, { 
-          count: 1, 
-          lines: func.lines, 
-          indexes: [[func.startLine - 1, func.startLine - 1 + func.lines - 1]],
-          level 
-        });
-      }
-    }
-  }
-
-  // Mark duplicated lines (all except the first occurrence)
-  for (const { count, indexes } of codeMap.values()) {
-    if (count > 1) {
-      indexes.slice(1).forEach(([start, end]) => {
-        for (let i = start; i <= end; i++) {
-          if (i >= 0 && i < duplicatedLineFlags.length) {
-            duplicatedLineFlags[i] = true;
-          }
-        }
-      });
-    }
-  }
-
-  return duplicatedLineFlags.filter(Boolean).length;
 }
 ```
 
@@ -489,7 +401,7 @@ The system implements robust error handling:
 
 ## Performance Optimizations
 
-1. **Batch Processing** (`analyzer.ts:13-67`)
+1. **Batch Processing** (`src/repository-analyzer.ts:13-67`)
 ```typescript
 private readonly BATCH_SIZE = 100;
 
@@ -518,7 +430,7 @@ for (let i = 0; i < files.length; i += this.BATCH_SIZE) {
 
 ## Code Quality Metrics
 
-1. **Complexity Thresholds** (`analyzer.ts:14-15`)
+1. **Complexity Thresholds** (`src/repository-analyzer.ts:14-15`)
 ```typescript
 private readonly COMPLEXITY_THRESHOLD = 10;
 private readonly LINES_THRESHOLD = 50;

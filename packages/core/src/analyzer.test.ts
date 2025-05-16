@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CodeAnalyzer } from './analyzer';
+import { RepositoryAnalyzer } from './repository-analyzer.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import os from 'os';
@@ -19,8 +19,8 @@ function removeTempFile(filePath: string) {
   } catch {}
 }
 
-describe('CodeAnalyzer', () => {
-  const analyzer = new CodeAnalyzer();
+describe('RepositoryAnalyzer', () => {
+  const analyzer = new RepositoryAnalyzer();
   let tempFiles: string[] = [];
 
   beforeEach(() => {
