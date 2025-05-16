@@ -9,5 +9,5 @@ export type {
 } from './types';
 
 // Export main classes/functions
-export { traverse, parseFile } from './traverser';
-export { CodeAnalyzer } from './analyzer';
+export { traverse, parseFile } from './traverser.js';
+export { CodeAnalyzer } from './analyzer.js';

@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Express } from 'express';
 import cors from 'cors';
 import { Redis } from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 const execAsync = promisify(exec);
-const app = express();
+const app: Express = express();
 const port = process.env.PORT || 3000;
 
 // Redis configuration
@@ -76,7 +76,7 @@ function getAllFunctions(result: AnalysisResult) {
 }
 
 // Helper function to clone and analyze a GitHub repository
-async function analyzeRepo(githubUrl: string): Promise<AnalysisResult> {
+export async function analyzeRepo(githubUrl: string): Promise<AnalysisResult> {
   // Validate GitHub URL
   if (!githubUrl.startsWith('https://github.com/')) {
     throw new Error('Invalid GitHub repository URL');
@@ -252,7 +252,12 @@ app.post('/cache/clear', async (req, res) => {
   }
 });
 
-// Start server
+// Start the server only if this file is being run directly
+if (import.meta.url === `file://${process.argv[1]}`) {
 app.listen(port, () => {
-  console.log(`🚀 API server running at http://localhost:${port}`);
-}); 
+  console.log(`Server is running on port ${port}`);
+});
+}
+
+export { app };
+export { execAsync }; 

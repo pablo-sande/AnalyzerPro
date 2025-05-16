@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: ['src/index.ts'],
-  format: ['esm', 'cjs'],
+  format: ['esm'],
   dts: {
     resolve: true,
     entry: './src/index.ts'
@@ -14,7 +14,7 @@ export default defineConfig({
   platform: 'node',
   outExtension({ format }) {
     return {
-      js: format === 'esm' ? '.mjs' : '.cjs',
+      js: '.mjs',
     };
   },
 }); 

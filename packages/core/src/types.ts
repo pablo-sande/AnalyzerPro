@@ -5,7 +5,7 @@ export interface FunctionMetrics {
   lines: number;
   startLine: number;
   complexity: number;
-  type: 'function' | 'method' | 'promise' | 'array' | 'hook' | 'callback';
+  type: 'function' | 'arrow' | 'promise' | 'array' | 'hook' | 'callback';
   hasWarning: boolean;
   code?: string; // Optional since we only need it for duplication detection
 }
@@ -26,7 +26,7 @@ export interface FileAnalysis {
 
 export interface FunctionAnalysis {
   name: string;
-  type: string;
+  type: FunctionMetrics['type'];
   size: number;
   complexity: number;
   characteristics: string[];

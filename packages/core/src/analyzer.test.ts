@@ -146,6 +146,7 @@ describe('CodeAnalyzer', () => {
 
     it('should detect duplicated code blocks', async () => {
       const content = `
+        // Regular function with block
         function duplicateFunction1() {
           const result = [];
           for (let i = 0; i < 10; i++) {
@@ -154,16 +155,8 @@ describe('CodeAnalyzer', () => {
           return result;
         }
 
-        im a line
-        im a line
-        im a line
-        im a line
-        im a line
-        im a line
-        im a line
-        im a line
-
-        function duplicateFunction2() {
+        // Arrow function with block
+        const duplicateFunction2 = () => {
           const result = [];
           for (let i = 0; i < 10; i++) {
             result.push(i * 2);
@@ -171,6 +164,25 @@ describe('CodeAnalyzer', () => {
           return result;
         }
 
+        // Similar but not identical function
+        function similarFunction1() {
+          const output = [];
+          for (let j = 0; j < 10; j++) {
+            output.push(j * 2);
+          }
+          return output;
+        }
+
+        // Another similar function with different variable names
+        const similarFunction2 = () => {
+          const numbers = [];
+          for (let k = 0; k < 10; k++) {
+            numbers.push(k * 2);
+          }
+          return numbers;
+        }
+
+        // Different function
         function differentFunction() {
           return [1, 2, 3];
         }
@@ -179,8 +191,8 @@ describe('CodeAnalyzer', () => {
       tempFiles.push(filePath);
       const result = await analyzer.analyzeFile(filePath);
       expect(result).not.toBeNull();
-      expect(result?.functions).toHaveLength(3);
-      expect(result?.duplicationPercentage).toBeGreaterThan(0);
+      expect(result?.functions).toHaveLength(5);
+      expect(result?.duplicationPercentage).toBe((14 / 31) * 100);
     });
   });
 

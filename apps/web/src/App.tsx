@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
 import { FileSearch } from '@/components/FileSearch';
 import { AnalysisResult } from '@code-analyzer-pro/core';
-import { InfoButton } from '@/components/InfoButton';
-import { FileAnalysis as FileAnalysisComponent } from '@/components/FileAnalysis';
 import { analyzeRepo } from './api';
+import { Header } from './components/Header';
+import { RepositoryInput } from './components/RepositoryInput';
+import { AnalysisSummary } from './components/AnalysisSummary';
+import { FilesTable } from './components/FilesTable';
+import { FileDetail } from './components/FileDetail';
 
 function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; setAnalysis: (analysis: AnalysisResult | null) => void }) {
   const [url, setUrl] = useState<string>(() => localStorage.getItem('lastUrl') || '');
@@ -30,6 +33,14 @@ function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; s
 
   const handleAnalyze = async () => {
     if (!url) return;
+    
+    // Validar que la URL sea de GitHub
+    const githubUrlPattern = /^https:\/\/github\.com\/[\w-]+\/[\w-]+$/;
+    if (!githubUrlPattern.test(url)) {
+      setError('Please enter a valid GitHub repository URL');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -105,54 +116,17 @@ function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; s
     }
   };
 
-  const SortButton = ({ field, label }: { field: string; label: string }) => (
-    <button
-      onClick={() => handleSort(field)}
-      className="flex items-center gap-1 hover:text-blue-500"
-    >
-      {label}
-      {sort.field === field && (
-        <span className="text-sm">
-          {sort.order === 'asc' ? '↑' : '↓'}
-        </span>
-      )}
-    </button>
-  );
-
   return (
     <main className="min-h-screen p-8">
       <div className="max-w-7xl mx-auto space-y-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold text-center">Code Analyzer Pro</h1>
-          <button
-            onClick={handleClearCache}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-          >
-            Clear Cache
-          </button>
-        </div>
+        <Header onClearCache={handleClearCache} />
         
-        <div className="flex gap-4">
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && url) {
-                handleAnalyze();
-              }
-            }}
-            placeholder="Enter repository URL..."
-            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={handleAnalyze}
-            disabled={loading || !url}
-            className="px-6 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600 disabled:opacity-50"
-          >
-            {loading ? 'Analyzing...' : 'Analyze'}
-          </button>
-        </div>
+        <RepositoryInput
+          url={url}
+          loading={loading}
+          onUrlChange={setUrl}
+          onAnalyze={handleAnalyze}
+        />
 
         {error && (
           <div className="p-4 text-red-700 bg-red-100 rounded-lg">
@@ -165,101 +139,13 @@ function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; s
             <FileSearch onSearch={handleSearch} />
 
             <div className="grid gap-4">
-              <div className="p-4 bg-white rounded-lg shadow">
-                <h2 className="text-xl font-semibold mb-4">Summary</h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600">Total Files</div>
-                    <div className="text-2xl font-bold">{analysis.summary.totalFiles}</div>
-                  </div>
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600">Total Lines</div>
-                    <div className="text-2xl font-bold">{analysis.summary.totalLines}</div>
-                  </div>
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600">Average Complexity</div>
-                    <div className="text-2xl font-bold">{analysis.summary.averageComplexity?.toFixed(2) || 'N/A'}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-white rounded-lg shadow">
-                <h2 className="text-xl font-semibold mb-4">Files</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="px-4 py-2 text-left">
-                          <div className="flex items-center">
-                            <SortButton field="name" label="Path" />
-                            <InfoButton info="The full path of the file in the repository" position="left" />
-                          </div>
-                        </th>
-                        <th className="px-4 py-2 text-right">
-                          <div className="flex items-center justify-end">
-                            <SortButton field="lines" label="Lines" />
-                            <InfoButton info="Total number of lines in the file" position="center" />
-                          </div>
-                        </th>
-                        <th className="px-4 py-2 text-right">
-                          <div className="flex items-center justify-end">
-                            <SortButton field="functions" label="Functions" />
-                            <InfoButton info="Number of functions found in the file" position="center" />
-                          </div>
-                        </th>
-                        <th className="px-4 py-2 text-right">
-                          <div className="flex items-center justify-end">
-                            <SortButton field="complexity" label="Complexity" />
-                            <InfoButton info="Average cyclomatic complexity of functions in the file" position="center" />
-                          </div>
-                        </th>
-                        <th className="px-4 py-2 text-right">
-                          <div className="flex items-center justify-end">
-                            <SortButton field="duplication" label="Duplication" />
-                            <InfoButton info="Percentage of code repetition of the functions in the file" position="right" />
-                          </div>
-                        </th>
-                        <th className="px-4 py-2 text-right">
-                          <div className="flex items-center justify-end">
-                            <SortButton field="warnings" label="Warnings" />
-                            <InfoButton info="Number of functions that have either more than 50 lines or complexity greater than 10" position="right" />
-                          </div>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedFiles?.map((file) => {
-                        const warnings = file.functions.filter(f => f.lines > 50 || f.complexity > 10).length;
-                        let warningColor = 'text-green-600';
-                        if (warnings >= 10) {
-                          warningColor = 'text-red-600';
-                        } else if (warnings >= 5) {
-                          warningColor = 'text-yellow-600';
-                        }
-                        return (
-                          <tr key={file.path} className="border-t hover:bg-gray-50">
-                            <td className="px-4 py-2 font-mono text-sm">
-                              <button
-                                onClick={() => handleFileClick(file.path)}
-                                className="text-blue-600 hover:text-blue-800 hover:underline text-left"
-                              >
-                                {file.path}
-                              </button>
-                            </td>
-                            <td className="px-4 py-2 text-right">{file.totalLines}</td>
-                            <td className="px-4 py-2 text-right">{file.functions.length}</td>
-                            <td className="px-4 py-2 text-right">{file.complexity?.toFixed(1) || 'N/A'}</td>
-                            <td className="px-4 py-2 text-right">{file.duplicationPercentage?.toFixed(1) || 'N/A'}%</td>
-                            <td className="px-4 py-2 text-right">
-                              <span className={`font-semibold ${warningColor}`}>{warnings}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <AnalysisSummary summary={analysis.summary} />
+              <FilesTable
+                files={sortedFiles || []}
+                sort={sort}
+                onSort={handleSort}
+                onFileClick={handleFileClick}
+              />
             </div>
           </>
         )}
@@ -268,69 +154,7 @@ function MainApp({ analysis, setAnalysis }: { analysis: AnalysisResult | null; s
   );
 }
 
-function FileDetail({ analysis }: { analysis: AnalysisResult | null }) {
-  const location = useLocation();
-  const params = new URLSearchParams(location.search);
-  const filePath = params.get('path');
-  const mainSortField = params.get('mainSortField') || 'name';
-  const mainSortOrder = params.get('mainSortOrder') || 'asc';
-  
-  if (!filePath) {
-    return (
-      <div className="min-h-screen p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="p-4 text-red-700 bg-red-100 rounded-lg">
-            No file path provided. Please select a file from the list.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!analysis) {
-    return (
-      <div className="min-h-screen p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="p-4 text-red-700 bg-red-100 rounded-lg">
-            No analysis data available. Please analyze the repository first.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const decodedFilePath = decodeURIComponent(filePath);
-  const selectedFile = analysis.files.find(f => f.path === decodedFilePath);
-  
-  if (!selectedFile) {
-    return (
-      <div className="min-h-screen p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="p-4 text-red-700 bg-red-100 rounded-lg">
-            File not found: {decodedFilePath}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <FileAnalysisComponent
-      file={{
-        ...selectedFile,
-        functions: selectedFile.functions.map(f => ({
-          ...f,
-          type: f.type || 'function'
-        }))
-      }}
-      mainSortField={mainSortField}
-      mainSortOrder={mainSortOrder}
-    />
-  );
-}
-
 export default function App() {
-  const [isLoading, setIsLoading] = useState(true);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(() => {
     try {
       const savedAnalysis = localStorage.getItem('lastAnalysis');
@@ -340,22 +164,6 @@ export default function App() {
       return null;
     }
   });
-
-  useEffect(() => {
-    setIsLoading(false);
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="p-4 text-gray-700 bg-gray-100 rounded-lg">
-            Loading...
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <Router>

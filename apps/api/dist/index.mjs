@@ -165,7 +165,14 @@ app.post("/cache/clear", async (req, res) => {
     res.status(500).json({ error: "Failed to clear cache" });
   }
 });
-app.listen(port, () => {
-  console.log(`\u{1F680} API server running at http://localhost:${port}`);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
+}
+export {
+  analyzeRepo,
+  app,
+  execAsync
+};
 //# sourceMappingURL=index.mjs.map

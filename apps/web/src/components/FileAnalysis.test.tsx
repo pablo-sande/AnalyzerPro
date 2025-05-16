@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { FileAnalysis } from './FileAnalysis';
 import { BrowserRouter } from 'react-router-dom';
 import { FileAnalysis as FileAnalysisType } from '@code-analyzer-pro/core';
@@ -12,10 +12,10 @@ const mockFile: FileAnalysisType = {
   functions: [
     {
       name: 'testFunction',
-      lines: 10,
-      startLine: 1,
-      complexity: 2,
       type: 'function',
+      startLine: 1,
+      lines: 10,
+      complexity: 2,
       hasWarning: false
     }
   ],
@@ -27,88 +27,91 @@ const mockFile: FileAnalysisType = {
   fileSize: 1024
 };
 
-describe('FileAnalysis', () => {
-  it('renders file information', () => {
-    render(
-      <BrowserRouter>
-        <FileAnalysis file={mockFile} />
-      </BrowserRouter>
-    );
+const renderWithRouter = (component: React.ReactNode) => {
+  return render(
+    <BrowserRouter>
+      {component}
+    </BrowserRouter>
+  );
+};
 
-    expect(screen.getByText('File Information')).toBeInTheDocument();
+describe('FileAnalysis', () => {
+  it('renders file information correctly', () => {
+    renderWithRouter(
+      <FileAnalysis file={mockFile} />
+    );
     expect(screen.getByText('/test/file.ts')).toBeInTheDocument();
-    expect(screen.getByText('file.ts')).toBeInTheDocument();
-    expect(screen.getByText('.ts')).toBeInTheDocument();
-    expect(screen.getByText('1.0 KB')).toBeInTheDocument();
+    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Functions' })).toBeInTheDocument();
+    
+    // Test max complexity in file info section
+    const maxComplexityLabel = screen.getByText('Max Complexity');
+    const maxComplexityValue = maxComplexityLabel.nextElementSibling;
+    expect(maxComplexityValue).toHaveTextContent('2.0');
+    
+    // Test average complexity in file info section
+    const avgComplexityLabel = screen.getByText('Avg Complexity');
+    const avgComplexityValue = avgComplexityLabel.nextElementSibling;
+    expect(avgComplexityValue).toHaveTextContent('2.0');
+    
+    expect(screen.getByText('0.1%')).toBeInTheDocument();
+    expect(screen.getByText('0')).toBeInTheDocument();
   });
 
   it('should render function details', () => {
-    render(
-      <BrowserRouter>
-        <FileAnalysis file={mockFile} />
-      </BrowserRouter>
+    renderWithRouter(
+      <FileAnalysis file={mockFile} />
     );
-    
-    // Check function names
     expect(screen.getByText('testFunction')).toBeInTheDocument();
-    
-    // Check function types
     expect(screen.getByText('function')).toBeInTheDocument();
-    
-    // Check complexity
-    expect(screen.getByText('2')).toBeInTheDocument();
-    
-    // Check lines
-    expect(screen.getByText('10')).toBeInTheDocument();
-    
-    // Check line numbers
-    expect(screen.getByText('1')).toBeInTheDocument();
+    const row = screen.getByText('testFunction').closest('tr');
+    expect(within(row as HTMLElement).getByText('2.0')).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText('10')).toBeInTheDocument();
   });
 
   it('should highlight functions with high complexity', () => {
-    const highComplexityFile: FileAnalysisType = {
+    const highComplexityFile = {
       ...mockFile,
-      functions: [{
-        ...mockFile.functions[0],
-        complexity: 15
-      }]
+      functions: [
+        {
+          ...mockFile.functions[0],
+          complexity: 10
+        }
+      ]
     };
-
-    render(
-      <BrowserRouter>
-        <FileAnalysis file={highComplexityFile} />
-      </BrowserRouter>
+    renderWithRouter(
+      <FileAnalysis file={highComplexityFile} />
     );
-    const complexityCell = screen.getByText('15').closest('td');
+    const row = screen.getByText('testFunction').closest('tr');
+    const complexityCell = within(row as HTMLElement).getByText('10.0');
     expect(complexityCell).toHaveClass('text-red-500');
   });
 
   it('should highlight functions with many lines', () => {
-    const manyLinesFile: FileAnalysisType = {
+    const manyLinesFile = {
       ...mockFile,
-      functions: [{
-        ...mockFile.functions[0],
-        lines: 60
-      }]
+      functions: [
+        {
+          ...mockFile.functions[0],
+          lines: 51
+        }
+      ]
     };
-
-    render(
-      <BrowserRouter>
-        <FileAnalysis file={manyLinesFile} />
-      </BrowserRouter>
+    renderWithRouter(
+      <FileAnalysis file={manyLinesFile} />
     );
-    const linesCell = screen.getByText('60').closest('td');
+    const row = screen.getByText('testFunction').closest('tr');
+    const linesCell = within(row as HTMLElement).getByText('51');
     expect(linesCell).toHaveClass('text-red-500');
   });
 
   it('should not highlight functions with low complexity and few lines', () => {
-    render(
-      <BrowserRouter>
-        <FileAnalysis file={mockFile} />
-      </BrowserRouter>
+    renderWithRouter(
+      <FileAnalysis file={mockFile} />
     );
-    const complexityCell = screen.getByText('2').closest('td');
-    const linesCell = screen.getByText('10').closest('td');
+    const row = screen.getByText('testFunction').closest('tr');
+    const complexityCell = within(row as HTMLElement).getByText('2.0');
+    const linesCell = within(row as HTMLElement).getByText('10');
     expect(complexityCell).not.toHaveClass('text-red-500');
     expect(linesCell).not.toHaveClass('text-red-500');
   });

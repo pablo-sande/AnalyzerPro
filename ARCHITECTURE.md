@@ -2,244 +2,216 @@
 
 ## Overview
 
-Code Analyzer Pro is a sophisticated code analysis tool that provides deep insights into codebases. This document explains the technical architecture and implementation details of the analysis process.
+Code Analyzer Pro is a monorepo-based code analysis tool that provides deep insights into JavaScript/TypeScript codebases. The project is organized into multiple applications and packages, each with specific responsibilities in the analysis process.
+
+## Repository Structure
+
+```
+code-analyzer-pro/
+├── apps/
+│   ├── api/            # Backend API service
+│   ├── cli/            # Command-line interface
+│   └── web/            # Frontend web application
+├── packages/
+│   ├── core/           # Core analysis engine
+│   ├── eslint-config-custom/  # Shared ESLint configuration
+│   └── tsconfig/       # Shared TypeScript configuration
+└── docs/               # Documentation
+```
 
 ## System Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   API Layer │────▶│  Core Engine│────▶│  AST Parser │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                   │                   │
-       ▼                   ▼                   ▼
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Redis     │     │  File System│     │  Babel      │
-│   Cache     │     │  Operations │     │  Parser     │
-└─────────────┘     └─────────────┘     └─────────────┘
+[Web App] <---> [API] <---> [Redis]
+                  ^
+                  |
+                  v
+                [Core] <---> [AST Parser]
+                  ^
+                  |
+                  v
+                [CLI]
 ```
 
-## Repository Analysis Process
+## Application Descriptions
 
-### 1. Repository Cloning and Preparation
+### 1. Web Application (`apps/web`)
+
+Frontend application providing the main user interface.
+
+Features:
+- Repository management
+- Analysis visualization
+- Report generation
+- User settings
 
 ```typescript
-async function analyzeRepo(githubUrl: string): Promise<AnalysisResult> {
-  // 1. Validate URL
-  if (!githubUrl.startsWith('https://github.com/')) {
-    throw new Error('Invalid GitHub repository URL');
-  }
-
-  // 2. Create temporary directory
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'repo-'));
-
-  try {
-    // 3. Clone repository with optimizations
-    await execAsync(`git clone --single-branch ${githubUrl} ${tempDir}`);
-    
-    // 4. Initialize analyzer
-    const analyzer = new CodeAnalyzer();
-    
-    // 5. Analyze repository
-    return await analyzer.analyzeRepo(tempDir);
-  } finally {
-    // 6. Cleanup
-    await fs.rm(tempDir, { recursive: true, force: true });
-  }
-}
+// Web application structure
+apps/web/
+├── src/
+│   ├── app/           # Application routes and pages
+│   ├── components/    # UI components
+│   ├── constants/     # Constants and configuration
+│   ├── test/         # Test files
+│   ├── App.tsx       # Main application component
+│   ├── App.test.tsx  # Application tests
+│   ├── api.ts        # API integration
+│   ├── main.tsx      # Application entry point
+│   └── index.css     # Global styles
+├── public/           # Static assets
+├── index.html        # HTML entry point
+├── package.json      # Dependencies and scripts
+├── vite.config.ts    # Vite configuration
+├── vitest.config.ts  # Test configuration
+├── tsconfig.json     # TypeScript configuration
+├── tsconfig.node.json # Node-specific TypeScript config
+├── postcss.config.js # PostCSS configuration
+└── tailwind.config.js # Tailwind CSS configuration
 ```
 
-### 2. Core Analysis Engine
+### 2. API Service (`apps/api`)
 
-The core analysis process follows these steps:
+Backend service handling analysis requests and data management.
 
-1. **File Discovery**
-   - Recursively scan the repository
-   - Filter for relevant file types
-   - Build file dependency graph
-
-2. **AST Parsing**
-   - Parse each file using Babel
-   - Generate Abstract Syntax Tree
-   - Extract function declarations and expressions
-
-3. **Function Analysis**
-   - Calculate cyclomatic complexity
-   - Determine fan-in/fan-out
-   - Analyze function characteristics
-   - Identify code patterns
-
-4. **Metrics Calculation**
-   - Compute file-level metrics
-   - Aggregate repository-wide statistics
-   - Generate summary data
-
-### 3. Data Structures
-
-#### AnalysisResult Interface
+Features:
+- Analysis request processing
+- Repository management
+- Data persistence with Redis
+- Authentication/Authorization
 
 ```typescript
-interface AnalysisResult {
-  files: FileAnalysis[];
-  summary: {
-    totalFiles: number;
-    totalLines: number;
-    totalFunctions: number;
-    errorCount: number;
-    functionsOver50Lines: number;
-    functionsOverComplexity10: number;
-    averageComplexity: number;
-    averageDuplication: number;
-  };
-}
+// API service structure
+apps/api/
+├── src/
+│   ├── index.ts       # Main application and routes
+│   ├── index.test.ts  # API tests
+│   ├── server.ts      # Server setup
+│   └── types/         # Type definitions
+├── package.json       # Dependencies and scripts
+├── tsup.config.ts     # Build configuration
+├── tsconfig.json      # TypeScript configuration
+└── vitest.config.ts   # Test configuration
 ```
 
-#### FileAnalysis Interface
+Key endpoints:
+- POST `/upload` - Store analysis results
+- GET `/metrics/:id` - Retrieve analysis results
+- GET `/analyze` - Analyze repository
+- GET `/analyze/file` - Analyze specific file
+
+### 3. CLI Application (`apps/cli`)
+
+Command-line interface for running code analysis.
+
+Features:
+- Repository analysis
+- File analysis
+- Report generation
+- Configuration management
 
 ```typescript
-interface FileAnalysis {
-  path: string;
-  name: string;
-  extension: string;
-  totalLines: number;
-  functions: FunctionMetrics[];
-  functionsCount: number;
-  complexity: number;
-  maxComplexity: number;
-  averageFanIn: number;
-  averageFanOut: number;
-  duplicationPercentage: number;
-  warningCount: number;
-  fileSize: number;
-}
+// CLI application structure
+apps/cli/
+├── src/
+│   └── index.ts       # CLI implementation
+├── package.json       # Dependencies and scripts
+└── tsconfig.json      # TypeScript configuration
 ```
 
-#### FunctionMetrics Interface
+## Package Descriptions
+
+### 1. Core Package (`packages/core`)
+
+The heart of the analysis system, providing fundamental code analysis capabilities.
+
+Key components:
+- `CodeAnalyzer` class for code analysis
+- AST traversal system
+- Function analysis
+- Code duplication detection
+- Metrics calculation
 
 ```typescript
-interface FunctionMetrics {
-  name: string;
-  lines: number;
-  startLine: number;
-  complexity: number;
-  fanIn: number;
-  fanOut: number;
-  type: 'function' | 'method' | 'promise' | 'array' | 'hook' | 'callback';
-  hasWarning: boolean;
-}
+// Core package structure
+packages/core/
+├── src/
+│   ├── analyzer.ts    # Main analyzer class
+│   ├── analyzer.test.ts # Analyzer tests
+│   ├── traverser.ts   # AST traversal logic
+│   ├── traverser.test.ts # Traverser tests
+│   ├── types.ts       # Type definitions
+│   ├── types/         # Additional type definitions
+│   └── index.ts       # Package entry point
+├── package.json       # Dependencies and scripts
+├── tsup.config.ts     # Build configuration
+├── tsconfig.json      # TypeScript configuration
+└── vitest.config.ts   # Test configuration
 ```
 
-### 4. Performance Optimizations
+### 2. Shared Configurations
 
-1. **Caching Strategy**
-   - Redis-based caching for analysis results
-   - 1-hour TTL for cached results
-   - Cache invalidation on repository updates
+#### ESLint Configuration (`packages/eslint-config-custom`)
+```typescript
+packages/eslint-config-custom/
+├── index.js          # Main configuration
+├── react.js          # React-specific rules
+└── package.json      # Dependencies and scripts
+```
 
-2. **Parallel Processing**
-   - File analysis in parallel
-   - AST parsing optimization
-   - Efficient memory usage
+#### TypeScript Configuration (`packages/tsconfig`)
+```typescript
+packages/tsconfig/
+├── base.json         # Base configuration
+├── react.json        # React-specific config
+└── package.json      # Dependencies and scripts
+```
 
-3. **Data Structure Optimization**
-   - Minimized data duplication
-   - Efficient function aggregation
-   - Optimized search and filtering
+## Package Dependencies
 
-4. **Resource Management**
-   - Temporary directory cleanup
-   - Memory usage optimization
-   - File handle management
+```
+core
+  ↑
+  ├── api
+  └── cli
+```
 
-### 5. API Layer
+## Data Flow
 
-The API provides these main endpoints:
-
-1. **Repository Analysis**
-   ```http
-   GET /analyze?url=https://github.com/username/repo
+1. **Web Application Flow**
    ```
-   - Handles repository cloning
-   - Manages analysis process
-   - Implements caching
-   - Provides filtering and sorting
-
-2. **File Analysis**
-   ```http
-   GET /analyze/file?url=https://github.com/username/repo&path=src/index.ts
+   User → Web → API → Redis Cache → Core → AST Parser → Analysis Results
    ```
-   - Extracts specific file analysis
-   - Provides detailed metrics
-   - Handles file-specific data
 
-3. **Cache Management**
-   ```http
-   POST /cache/clear
+2. **CLI Flow**
    ```
-   - Manages cache invalidation
-   - Handles cache updates
-   - Provides cache statistics
+   User → CLI → Core → AST Parser → Analysis Results
+   ```
 
-### 6. Error Handling
+3. **Caching Flow**
+   ```
+   Analysis Results → API → Redis Cache (1 hour TTL) → Web Display
+   ```
 
-The system implements comprehensive error handling:
+## Development Workflow
 
-1. **Repository Errors**
-   - Invalid URLs
-   - Clone failures
-   - Permission issues
+1. **Local Development**
+   - Use `pnpm` for package management
+   - Run tests with `vitest`
+   - Build packages with `tsc`
+   - Docker for API and Redis services
 
-2. **Analysis Errors**
-   - Parse errors
-   - File access issues
-   - Memory constraints
+3. **Testing Strategy**
+   - Unit tests for core functionality
+   - Integration tests for API
 
-3. **API Errors**
-   - Invalid requests
-   - Timeout handling
-   - Rate limiting
+## Build System
 
-### 7. Security Considerations
+1. **Package Building**
+   - TypeScript compilation
+   - Bundle generation
+   - Type definitions
 
-1. **Input Validation**
-   - URL sanitization
-   - Path traversal prevention
-   - Resource limits
-
-2. **Resource Management**
-   - Memory limits
-   - File size restrictions
-   - Process timeouts
-
-3. **Access Control**
-   - API authentication
-   - Rate limiting
-   - Request validation
-
-## Performance Metrics
-
-- **Repository Analysis**: ~30 seconds for large repositories
-- **File Analysis**: < 1 second per file
-- **Cache Hit Rate**: > 90% for repeated analyses
-- **Memory Usage**: < 500MB for large repositories
-- **CPU Usage**: Optimized for multi-core systems
-
-## Future Improvements
-
-1. **Analysis Enhancements**
-   - More detailed dependency analysis
-   - Advanced code pattern detection
-   - Machine learning-based insights
-
-2. **Performance Optimizations**
-   - Distributed analysis
-   - Incremental analysis
-   - Better caching strategies
-
-3. **Feature Additions**
-   - Custom metric definitions
-   - Advanced filtering options
-   - Real-time analysis updates
-
-## Contributing
-
-For detailed contribution guidelines, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file. 
+2. **Application Building**
+   - Vite for web application
+   - TSC for CLI
+   - Node.js for API

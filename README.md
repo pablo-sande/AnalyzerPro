@@ -12,6 +12,9 @@ A powerful code analysis tool that provides deep insights into your codebase's s
 - **Real-time Analysis**: Get instant feedback on your code
 - **Caching System**: Redis-based caching for faster repeated analyses
 - **API-First Design**: Easy integration with other tools and services
+- **Advanced UI**: Modern React-based interface with sorting and filtering
+- **Function Type Detection**: Automatic detection of function types (function, method, promise, array, hook, callback)
+- **Warning System**: Highlights complex functions and long methods
 
 ## 📊 Key Metrics
 
@@ -21,14 +24,17 @@ A powerful code analysis tool that provides deep insights into your codebase's s
 - Function dependencies
 - Code quality indicators
 - Performance metrics
+- Function type distribution
+- Warning counts
 
 ## 🛠️ Tech Stack
 
 - **Backend**: Node.js, Express
 - **Core Analysis**: TypeScript, Babel Parser
+- **Frontend**: React, TailwindCSS
 - **Caching**: Redis
 - **Build Tools**: tsup, TypeScript
-- **Testing**: Vitest
+- **Testing**: Vitest, Testing Library
 - **Linting**: ESLint
 
 ## 🚀 Getting Started
@@ -48,15 +54,22 @@ git clone https://github.com/yourusername/code-analyzer-pro.git
 # Install dependencies
 pnpm install
 
-# Start Redis server
-# Make sure Redis is running on localhost:6379 or update the configuration
-
 # Build the project
 pnpm build
+
+# Start Redis server
+docker compose up -d redis
+
+# To stop Redis
+docker compose down
 
 # Start the API server
 cd apps/api
 pnpm start
+
+# Start the web interface
+cd apps/web
+pnpm run dev
 ```
 
 ### Environment Variables
@@ -80,7 +93,7 @@ GET /analyze?url=https://github.com/username/repo
 Query Parameters:
 - `url`: GitHub repository URL
 - `search`: (optional) Search term for filtering functions
-- `sortBy`: (optional) Sort by field (size, complexity, fanIn, fanOut, name, file)
+- `sortBy`: (optional) Sort by field (size, complexity, fanIn, fanOut, name, file, type)
 - `sortOrder`: (optional) Sort order (asc, desc)
 
 ### Get File Analysis
@@ -88,6 +101,12 @@ Query Parameters:
 ```http
 GET /analyze/file?url=https://github.com/username/repo&path=src/index.ts
 ```
+
+Query Parameters:
+- `url`: GitHub repository URL
+- `path`: Path to the file in the repository
+- `sortField`: (optional) Sort by field (name, type, startLine, complexity, lines)
+- `sortOrder`: (optional) Sort order (asc, desc)
 
 ### Clear Cache
 
@@ -112,9 +131,11 @@ code-analyzer-pro/
 ## 📈 Performance
 
 - Repository Analysis: ~30 seconds for large repositories
-- Real-time file analysis
 - Efficient caching system
+- Advanced algorithms for code analysis
 - Optimized data structures
+- Parallel processing of files
+- Incremental analysis support
 
 ## 🤝 Contributing
 
@@ -123,14 +144,3 @@ code-analyzer-pro/
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Babel](https://babeljs.io/) for the parser
-- [Express](https://expressjs.com/) for the web framework
-- [Redis](https://redis.io/) for caching
-- [TypeScript](https://www.typescriptlang.org/) for type safety 

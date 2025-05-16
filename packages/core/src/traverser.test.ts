@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFile, traverse } from './traverser';
+import { parseFile, traverse } from './traverser.js';
 
 describe('Traverser', () => {
   describe('parseFile', () => {
