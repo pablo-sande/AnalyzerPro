@@ -17,7 +17,8 @@ var redis = new Redis({
   port: parseInt(process.env.REDIS_PORT || "6379")
 });
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 function getAllFunctions(result) {
   return result.files.flatMap(
     (file) => (file.functions || []).map((func) => ({
